@@ -1,31 +1,46 @@
 <!-- specd:managed:steering/structure.md:v3 begin -->
 # Steering: Structure
 
-> No aido application code exists yet — repo holds only the `.specd` skeleton. This is
-> the **planned** layout by domain, so tasks can target files instead of scanning.
-> Update to the real tree as code lands; promote settled conventions to memory.md.
+> Real code has landed (Go task-CRUD foundation). This maps the current tree plus the
+> planned aido domains, so tasks can target files instead of scanning. Update as more
+> of the AI/knowledge layers land; promote settled conventions to memory.md.
 
-## Planned layout (by domain concern)
+## Current layout (in the tree)
+- **main.go** — entrypoint: reads `DB_PATH`/`ADDR` env, opens + migrates the store,
+  wires handlers, runs the `net/http` server with graceful shutdown on SIGINT/SIGTERM.
+- **internal/db/** — `db.go`: `Store` over `modernc.org/sqlite`, `Task` model,
+  `Open` (pragmas, single conn), `Migrate`, and task queries (`ListTasks`, `AddTask`,
+  `ToggleTask`, `DeleteTask`).
+- **internal/handlers/** — `handlers.go`: `Handler` bundling store + parsed templates,
+  `Routes` mux, and per-route handlers; `/healthz`. Renders full page or the
+  `#task-list` HTMX fragment.
+- **internal/handlers/templates/** — `index.html` (full page) and `list.html`
+  (task-list fragment), embedded via `embed.FS`.
+- **data/** — runtime SQLite database file (`app.db`, WAL). Not source.
+- **Dockerfile / compose.yaml / .dockerignore** — container packaging.
+- **.specd/** — specd harness: specs, roles, steering, skills.
+
+## Planned layout (aido AI domains, not yet built — by domain concern)
 - **projects/** — Project entity: create project, own uploaded docs, own accumulated
   knowledge base.
 - **docs/ (ingestion)** — upload, parse, and index project docs (workflow, use cases,
   tech stack, modules) into the per-project knowledge base.
 - **knowledge/** — foundational knowledge store + retrieval (grounding source for
   enrichment). Embeddings/index live here.
-- **tasks/** — Task and Sub-task entities: persistence and state (pick up → in
-  progress → complete), decomposition into sub-tasks.
-- **structuring/ (AI)** — the aido core: take raw ticket + retrieved project knowledge,
-  emit organized, EARS-shaped, domain-aware, enriched task. LLM calls isolated here.
-- **api/** or **cli/** — entry surface a developer uses to feed tickets and pick tasks.
+- **tasks/** — Task and Sub-task entities and state. Today this lives in
+  `internal/db` + `internal/handlers`; promote/split as sub-tasks + project scoping land.
+- **structuring/ (AI)** — the aido core: raw ticket + retrieved project knowledge →
+  organized, EARS-shaped, domain-aware, enriched task. LLM calls isolated here.
 
 ## Naming & patterns
-- One domain concern per directory; cross-concern logic goes through explicit
+- Non-entrypoint code lives under `internal/` (unexported module surface).
+- One domain concern per package; cross-concern logic goes through explicit
   interfaces, not shared globals.
 - LLM/prompt code stays inside `structuring/` — no LLM calls scattered across entities.
 - Enrichment always carries a trace to its knowledge source (auditable grounding).
-- Tests colocated with source per language convention (TBD once stack chosen).
-
-## Spec authoring format
+- DB access is confined to the store package; handlers call the store, never SQL.
+- Mutating routes return the `#task-list` fragment for HTMX swap; GET renders the page.
+- Tests colocated with source (Go `_test.go` convention).
 
 ## Spec authoring format
 - `design.md` decision contract: declare `references:` (the `R<n>` requirements it
@@ -34,6 +49,7 @@
   reference is always refused; the full contract is required under the production
   profile.
 - `tasks.md` optional trace/risk columns: `refs`, `kind`, `risk`, `complexity`,
-  `capabilities`, `context`, `evidence`, `checks`. Legacy six-column tables keep working (backward compatible);
-  the production planning profile requires the full set.
+  `capabilities`, `context`, `evidence`, `checks`. The six required columns alone are
+  a valid table; the rest may be omitted — the production planning profile requires
+  the full set.
 <!-- specd:managed:steering/structure.md:v3 end -->

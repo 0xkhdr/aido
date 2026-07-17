@@ -21,7 +21,8 @@
 - **Project** — top-level container. Holds uploaded docs and accumulated foundational
   knowledge (workflow, use cases, tech stack, main modules, domain).
 - **Task** — a ticket inside a project. Structured, EARS-shaped, enriched with project
-  context.
+  context. (Current code implements the task-persistence seed: create, list, toggle
+  done, delete.)
 - **Sub-task** — a task may decompose into sub-tasks; sub-tasks carry the same
   structure and inherit project context.
 - **Project docs** — user-uploaded material describing the project's workflow, use
@@ -40,6 +41,12 @@
    where useful.
 5. Project knowledge accumulates over time; later tickets get richer enrichment.
 6. **Developer** picks tasks to work on and moves them to complete.
+
+## Build status
+- Landed today: a minimal Go + SQLite + HTMX task CRUD (create / list / toggle /
+  delete) — the persistence and UI foundation the AI structuring layer builds on.
+- Not yet built: project entity, doc ingestion, knowledge base / retrieval, LLM
+  structuring, sub-task decomposition.
 
 ## Principles
 - Never lose the ticket's original intent while restructuring — enrich, do not invent
