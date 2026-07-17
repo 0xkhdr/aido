@@ -4,7 +4,7 @@
       "args": [
         "mcp"
       ],
-      "cwd": "/var/www/html/rai/up/aido"
+      "cwd": "/var/www/html/rai/up/aido",
       "command": "specd"
     }
   }
