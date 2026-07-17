@@ -1,0 +1,9 @@
+.git
+.gitignore
+.serena
+.specd
+data
+*.md
+compose.yaml
+Dockerfile
+.dockerignore

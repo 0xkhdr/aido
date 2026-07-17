@@ -1,0 +1,13 @@
+<ul id="task-list">
+  {{ range . }}
+  <li class="{{ if .Done }}done{{ end }}">
+    <input type="checkbox" {{ if .Done }}checked{{ end }}
+      hx-post="/tasks/{{ .ID }}/toggle" hx-target="#task-list" hx-swap="outerHTML">
+    <span>{{ .Title }}</span>
+    <button hx-delete="/tasks/{{ .ID }}" hx-target="#task-list" hx-swap="outerHTML"
+      hx-confirm="Delete this task?">✕</button>
+  </li>
+  {{ else }}
+  <li><span>No tasks yet.</span></li>
+  {{ end }}
+</ul>

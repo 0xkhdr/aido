@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "specd": {
+      "args": [
+        "mcp"
+      ],
+      "cwd": "/var/www/html/rai/up/aido"
+      "command": "specd"
+    }
+  }
+}

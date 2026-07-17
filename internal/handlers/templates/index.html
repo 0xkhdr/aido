@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ai-do</title>
+  <script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous"></script>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; }
+    h1 { margin-bottom: 1rem; }
+    form { display: flex; gap: .5rem; margin-bottom: 1.5rem; }
+    input[type=text] { flex: 1; padding: .5rem; font-size: 1rem; }
+    button { padding: .5rem .8rem; font-size: 1rem; cursor: pointer; }
+    ul { list-style: none; padding: 0; }
+    li { display: flex; align-items: center; gap: .6rem; padding: .5rem 0; border-bottom: 1px solid #8883; }
+    li.done span { text-decoration: line-through; opacity: .5; }
+    li span { flex: 1; }
+  </style>
+</head>
+<body>
+  <h1>ai-do</h1>
+  <form hx-post="/tasks" hx-target="#task-list" hx-swap="outerHTML" hx-on::after-request="this.reset()">
+    <input type="text" name="title" placeholder="What needs doing?" autofocus required>
+    <button type="submit">Add</button>
+  </form>
+  {{ template "list.html" . }}
+</body>
+</html>
