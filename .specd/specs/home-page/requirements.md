@@ -14,7 +14,7 @@ create/list/toggle/delete stays as-is.
 Entities: a Project (id, name, created_at) is a container for tasks; a Task (id,
 project_id, title, done, created_at) belongs to exactly one project.
 
-## Requirement R1 — Project model
+## R1 — Project model
 
 owner: Mohamed Khedr
 priority: must
@@ -25,7 +25,7 @@ risk: medium
 - R1.3: When a user submits a project name that is empty or only whitespace, the system shall reject it and create no project.
 - R1.4: When a task is created, the system shall associate it with exactly one existing project via project_id.
 
-## Requirement R2 — Sidebar and project selection
+## R2 — Sidebar and project selection
 
 owner: Mohamed Khedr
 priority: must
@@ -35,7 +35,7 @@ risk: low
 - R2.2: When a user selects a project in the sidebar, the system shall make it the active project and show that project's tasks in the main pane.
 - R2.3: When no project has been explicitly selected, the system shall treat the first default project as active.
 
-## Requirement R3 — Chat-style composer
+## R3 — Chat-style composer
 
 owner: Mohamed Khedr
 priority: must
@@ -47,7 +47,7 @@ risk: medium
 - R3.4: When a task is created, the system shall clear the composer and show the new task in the task list without a full page reload.
 - R3.5: When the active project has no tasks, the system shall show a clean empty state prompting the user to add the first task.
 
-## Requirement R4 — Task list within a project
+## R4 — Task list within a project
 
 owner: Mohamed Khedr
 priority: must
@@ -57,7 +57,7 @@ risk: low
 - R4.2: When a user toggles a task, the system shall persist its done state and reflect it in the list.
 - R4.3: When a user deletes a task, the system shall remove it from the active project and from the list.
 
-## Requirement R5 — Clean UI/UX
+## R5 — Clean UI/UX
 
 owner: Mohamed Khedr
 priority: should
