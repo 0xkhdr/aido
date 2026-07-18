@@ -22,9 +22,10 @@ verify:
 # escalation:
 #   max_verify_fails: 3    # consecutive verify failures that block a task (0 disables).
 
-# orchestration:
-#   enabled: false         # required true before `specd brain` will start.
-#   model: ""
+# required true before `specd brain` will start.
+orchestration:
+  enabled: true
+  model: ""
 
 # Provider-neutral routing. Core chooses capability class only; adapters map it
 # to provider/model. Zero limits are unbounded. Unknown telemetry is allowed by
