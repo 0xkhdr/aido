@@ -3,6 +3,10 @@
 > Traces every requirement to a mechanism. Entities + UI/UX first; keeps the
 > existing Go + htmx + SQLite stack.
 
+references: R1, R2, R3, R4, R5
+disposition: accepted
+owner: Mohamed Khedr
+
 ## Architecture
 
 Server-rendered HTML over htmx, same as today. No SPA, no client framework.
