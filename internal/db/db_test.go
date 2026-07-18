@@ -90,6 +90,116 @@ func TestCreateProjectRejectsBlank(t *testing.T) {
 	}
 }
 
+func TestRenameProject(t *testing.T) {
+	s := newStore(t)
+	p, _ := s.CreateProject("Original")
+	task, _ := s.CreateTask(p.ID, "keep ownership")
+
+	renamed, err := s.RenameProject(p.ID, "  Renamed  ")
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if renamed.ID != p.ID || renamed.Name != "Renamed" {
+		t.Fatalf("rename = %#v, want same id with trimmed name", renamed)
+	}
+	list, _ := s.ListTasksByProject(p.ID)
+	if len(list) != 1 || list[0].ID != task.ID {
+		t.Fatalf("rename changed task ownership: %#v", list)
+	}
+}
+
+func TestRenameProjectRejectsBlankAndMissing(t *testing.T) {
+	s := newStore(t)
+	p, _ := s.CreateProject("Original")
+
+	if _, err := s.RenameProject(p.ID, " \t\n"); !errors.Is(err, ErrEmptyName) {
+		t.Fatalf("blank rename error = %v, want ErrEmptyName", err)
+	}
+	got, _ := s.GetProject(p.ID)
+	if got.Name != "Original" {
+		t.Fatalf("blank rename changed name to %q", got.Name)
+	}
+	if _, err := s.RenameProject(99999, "Missing"); !errors.Is(err, ErrNoProject) {
+		t.Fatalf("missing rename error = %v, want ErrNoProject", err)
+	}
+}
+
+func TestDeleteProjectCascadesTasksAndReturnsOldestSurvivor(t *testing.T) {
+	s := newStore(t)
+	oldest, _ := s.ListProjects()
+	a, _ := s.CreateProject("A")
+	b, _ := s.CreateProject("B")
+	s.CreateTask(a.ID, "remove me")
+	s.CreateTask(b.ID, "keep me")
+
+	active, err := s.DeleteProject(a.ID)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if active.ID != oldest[0].ID {
+		t.Fatalf("active = %d, want oldest survivor %d", active.ID, oldest[0].ID)
+	}
+	if _, err := s.GetProject(a.ID); !errors.Is(err, ErrNoProject) {
+		t.Fatalf("deleted project error = %v, want ErrNoProject", err)
+	}
+	if tasks, _ := s.ListTasksByProject(a.ID); len(tasks) != 0 {
+		t.Fatalf("deleted project's tasks remain: %#v", tasks)
+	}
+	if tasks, _ := s.ListTasksByProject(b.ID); len(tasks) != 1 {
+		t.Fatalf("surviving project's tasks = %#v, want one", tasks)
+	}
+}
+
+func TestDeleteProjectsValidatesBeforeMutatingAndDeduplicates(t *testing.T) {
+	s := newStore(t)
+	a, _ := s.CreateProject("A")
+	b, _ := s.CreateProject("B")
+	s.CreateTask(a.ID, "a")
+	s.CreateTask(b.ID, "b")
+
+	if _, err := s.DeleteProjects([]int64{a.ID, 99999}); !errors.Is(err, ErrNoProject) {
+		t.Fatalf("stale bulk delete error = %v, want ErrNoProject", err)
+	}
+	if _, err := s.GetProject(a.ID); err != nil {
+		t.Fatalf("stale bulk delete changed existing project: %v", err)
+	}
+
+	if _, err := s.DeleteProjects([]int64{a.ID, a.ID}); err != nil {
+		t.Fatalf("deduplicated bulk delete: %v", err)
+	}
+	if _, err := s.GetProject(a.ID); !errors.Is(err, ErrNoProject) {
+		t.Fatalf("duplicate ID did not delete target: %v", err)
+	}
+	if _, err := s.GetProject(b.ID); err != nil {
+		t.Fatalf("duplicate ID deleted an unselected project: %v", err)
+	}
+}
+
+func TestDeleteProjectsRejectsEmptyAndRecoversDefault(t *testing.T) {
+	s := newStore(t)
+	if _, err := s.DeleteProjects(nil); !errors.Is(err, ErrEmptySelection) {
+		t.Fatalf("empty bulk delete error = %v, want ErrEmptySelection", err)
+	}
+
+	projects, _ := s.ListProjects()
+	last := projects[0]
+	s.CreateTask(last.ID, "orphan check")
+	active, err := s.DeleteProject(last.ID)
+	if err != nil {
+		t.Fatalf("delete last: %v", err)
+	}
+	if active.Name != "My Tasks" {
+		t.Fatalf("recovered project = %#v, want My Tasks", active)
+	}
+	projects, _ = s.ListProjects()
+	if len(projects) != 1 || projects[0].ID != active.ID {
+		t.Fatalf("projects after last deletion = %#v", projects)
+	}
+	if tasks, _ := s.ListTasksByProject(active.ID); len(tasks) != 0 {
+		t.Fatalf("recovered project inherited deleted tasks: %#v", tasks)
+	}
+}
+
 // R2.2: unknown project id is rejected.
 func TestGetProjectUnknown(t *testing.T) {
 	s := newStore(t)

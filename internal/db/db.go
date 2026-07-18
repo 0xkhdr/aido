@@ -16,6 +16,9 @@ var ErrEmptyName = errors.New("name must not be empty")
 // ErrNoProject is returned when a task references a project that does not exist.
 var ErrNoProject = errors.New("project does not exist")
 
+// ErrEmptySelection is returned when a bulk project deletion has no targets.
+var ErrEmptySelection = errors.New("at least one project must be selected")
+
 // Store wraps the SQLite connection pool.
 type Store struct {
 	db *sql.DB
@@ -169,6 +172,94 @@ func (s *Store) CreateProject(name string) (Project, error) {
 	return s.GetProject(id)
 }
 
+// RenameProject trims and persists a project's name without changing its identity
+// or task ownership. Missing projects return ErrNoProject.
+func (s *Store) RenameProject(id int64, name string) (Project, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Project{}, ErrEmptyName
+	}
+
+	result, err := s.db.Exec(`UPDATE projects SET name = ? WHERE id = ?`, name, id)
+	if err != nil {
+		return Project{}, err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return Project{}, err
+	}
+	if changed == 0 {
+		return Project{}, ErrNoProject
+	}
+	return s.GetProject(id)
+}
+
+// DeleteProject removes one project and its tasks atomically. It returns the
+// oldest remaining project, or a newly provisioned default project when the
+// deleted project was the last one.
+func (s *Store) DeleteProject(id int64) (Project, error) {
+	return s.DeleteProjects([]int64{id})
+}
+
+// DeleteProjects removes exactly the supplied, unique existing projects and
+// their tasks in one transaction. Every supplied identifier is validated before
+// mutation, so a stale ID cannot cause a partial bulk deletion.
+func (s *Store) DeleteProjects(ids []int64) (active Project, err error) {
+	ids = uniqueProjectIDs(ids)
+	if len(ids) == 0 {
+		return Project{}, ErrEmptySelection
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Project{}, err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	for _, id := range ids {
+		var exists int
+		if err = tx.QueryRow(`SELECT 1 FROM projects WHERE id = ?`, id).Scan(&exists); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Project{}, ErrNoProject
+			}
+			return Project{}, err
+		}
+	}
+
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	if _, err = tx.Exec(`DELETE FROM projects WHERE id IN (`+placeholders+`)`, args...); err != nil {
+		return Project{}, err
+	}
+
+	active, err = firstProject(tx)
+	if errors.Is(err, sql.ErrNoRows) {
+		result, insertErr := tx.Exec(`INSERT INTO projects (name) VALUES (?)`, "My Tasks")
+		if insertErr != nil {
+			return Project{}, insertErr
+		}
+		id, insertErr := result.LastInsertId()
+		if insertErr != nil {
+			return Project{}, insertErr
+		}
+		active, err = projectByID(tx, id)
+	}
+	if err != nil {
+		return Project{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return Project{}, err
+	}
+	return active, nil
+}
+
 // ListProjects returns all projects, oldest first (R2.1).
 func (s *Store) ListProjects() ([]Project, error) {
 	rows, err := s.db.Query(`SELECT id, name, created_at FROM projects ORDER BY id ASC`)
@@ -267,4 +358,29 @@ func scanProject(sc scanner) (Project, error) {
 	}
 	p.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
 	return p, nil
+}
+
+type queryRower interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func firstProject(q queryRower) (Project, error) {
+	return scanProject(q.QueryRow(`SELECT id, name, created_at FROM projects ORDER BY id ASC LIMIT 1`))
+}
+
+func projectByID(q queryRower, id int64) (Project, error) {
+	return scanProject(q.QueryRow(`SELECT id, name, created_at FROM projects WHERE id = ?`, id))
+}
+
+func uniqueProjectIDs(ids []int64) []int64 {
+	unique := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	return unique
 }
