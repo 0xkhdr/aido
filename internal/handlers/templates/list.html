@@ -1,13 +1,15 @@
 <ul id="task-list">
-  {{ range . }}
+  {{ $active := .Active.ID }}
+  {{ range .Tasks }}
   <li class="{{ if .Done }}done{{ end }}">
     <input type="checkbox" {{ if .Done }}checked{{ end }}
-      hx-post="/tasks/{{ .ID }}/toggle" hx-target="#task-list" hx-swap="outerHTML">
+      hx-post="/tasks/{{ .ID }}/toggle?project={{ $active }}" hx-target="#task-list" hx-swap="outerHTML"
+      aria-label="Toggle done">
     <span>{{ .Title }}</span>
-    <button hx-delete="/tasks/{{ .ID }}" hx-target="#task-list" hx-swap="outerHTML"
-      hx-confirm="Delete this task?">✕</button>
+    <button class="del" hx-delete="/tasks/{{ .ID }}?project={{ $active }}" hx-target="#task-list" hx-swap="outerHTML"
+      hx-confirm="Delete this task?" aria-label="Delete task">✕</button>
   </li>
   {{ else }}
-  <li><span>No tasks yet.</span></li>
+  <li class="empty-row"><span class="empty"><strong>No tasks yet</strong>Add your first task in the composer above.</span></li>
   {{ end }}
 </ul>

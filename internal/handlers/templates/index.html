@@ -6,24 +6,94 @@
   <title>ai-do</title>
   <script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous"></script>
   <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto; padding: 0 1rem; }
-    h1 { margin-bottom: 1rem; }
-    form { display: flex; gap: .5rem; margin-bottom: 1.5rem; }
-    input[type=text] { flex: 1; padding: .5rem; font-size: 1rem; }
-    button { padding: .5rem .8rem; font-size: 1rem; cursor: pointer; }
-    ul { list-style: none; padding: 0; }
-    li { display: flex; align-items: center; gap: .6rem; padding: .5rem 0; border-bottom: 1px solid #8883; }
-    li.done span { text-decoration: line-through; opacity: .5; }
-    li span { flex: 1; }
+    /* One design-token set applied across every pane (R5.2). */
+    :root {
+      color-scheme: light dark;
+      --space-1: .4rem;
+      --space-2: .8rem;
+      --space-3: 1.2rem;
+      --space-4: 2rem;
+      --radius: .6rem;
+      --accent: #4f46e5;
+      --bg: Canvas;
+      --fg: CanvasText;
+      --muted: color-mix(in srgb, CanvasText 55%, Canvas);
+      --line: color-mix(in srgb, CanvasText 15%, Canvas);
+      --panel: color-mix(in srgb, CanvasText 4%, Canvas);
+      --sidebar-w: 16rem;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--fg); background: var(--bg); }
+
+    /* Two-pane desktop layout (R5.1). */
+    .app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+
+    #sidebar {
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+      padding: var(--space-3);
+      display: flex; flex-direction: column; gap: var(--space-3);
+    }
+    #sidebar h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0; }
+    .project-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+    .project-list a {
+      display: block; padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius); color: var(--fg); text-decoration: none;
+    }
+    .project-list a:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+    .project-list li.active a { background: color-mix(in srgb, var(--accent) 18%, transparent); font-weight: 600; }
+    .new-project { display: flex; gap: var(--space-1); }
+    .new-project input { flex: 1; min-width: 0; }
+
+    input, button { font: inherit; }
+    input {
+      padding: var(--space-1) var(--space-2);
+      border: 1px solid var(--line); border-radius: var(--radius);
+      background: var(--bg); color: var(--fg);
+    }
+    input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    button {
+      padding: var(--space-1) var(--space-2);
+      border: 1px solid transparent; border-radius: var(--radius);
+      background: var(--accent); color: #fff; cursor: pointer;
+    }
+    button:hover { filter: brightness(1.08); }
+
+    /* Main pane: header, centered composer focal point, task list. */
+    #main { display: flex; flex-direction: column; padding: var(--space-4); gap: var(--space-4); }
+    .main-header h1 { margin: 0; font-size: 1.5rem; }
+    .composer-wrap { display: flex; justify-content: center; }
+    .composer {
+      display: flex; gap: var(--space-2); width: 100%; max-width: 40rem;
+      padding: var(--space-2);
+      border: 1px solid var(--line); border-radius: 1rem;
+      background: var(--panel);
+      box-shadow: 0 1px 3px color-mix(in srgb, CanvasText 8%, transparent);
+    }
+    .composer input { flex: 1; border: none; background: transparent; font-size: 1.05rem; }
+    .composer input:focus-visible { outline: none; }
+
+    .task-wrap { display: flex; justify-content: center; }
+    #task-list { list-style: none; margin: 0; padding: 0; width: 100%; max-width: 40rem; display: flex; flex-direction: column; }
+    #task-list li { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+    #task-list li.done span { text-decoration: line-through; color: var(--muted); }
+    #task-list li span { flex: 1; }
+    #task-list li .del { background: transparent; color: var(--muted); border: none; }
+    #task-list li .del:hover { color: #dc2626; }
+    .empty { color: var(--muted); text-align: center; padding: var(--space-4) 0; }
+    .empty strong { display: block; color: var(--fg); margin-bottom: var(--space-1); }
+
+    @media (max-width: 40rem) {
+      .app { grid-template-columns: 1fr; }
+      #sidebar { border-right: none; border-bottom: 1px solid var(--line); }
+    }
   </style>
 </head>
 <body>
-  <h1>ai-do</h1>
-  <form hx-post="/tasks" hx-target="#task-list" hx-swap="outerHTML" hx-on::after-request="this.reset()">
-    <input type="text" name="title" placeholder="What needs doing?" autofocus required>
-    <button type="submit">Add</button>
-  </form>
-  {{ template "list.html" . }}
+  <div class="app">
+    {{ template "sidebar.html" . }}
+    {{ template "main.html" . }}
+  </div>
 </body>
 </html>

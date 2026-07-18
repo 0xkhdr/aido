@@ -1,0 +1,9 @@
+<section id="main">
+  <div class="main-header">
+    <h1>{{ .Active.Name }}</h1>
+  </div>
+  {{ template "composer.html" . }}
+  <div class="task-wrap">
+    {{ template "list.html" . }}
+  </div>
+</section>
