@@ -1,15 +1,17 @@
 <!-- specd:managed:steering/tech.md:v1 begin -->
 # Steering: Tech
 
-> Fill this in for your project. Replace the prompts below with your real stack and
-> constraints. The harness reads these before proposing changes.
-
 ## Stack
-- **Language / runtime:** <e.g. Go 1.22, stdlib only>
-- **Build / test:** <e.g. `go build ./...`, `go test ./...`>
-- **Dependencies:** <policy — e.g. zero runtime deps>
+- **Language / runtime:** Go 1.26, stdlib only
+- **Database:** SQLite (modernc.org/sqlite), WAL mode, foreign key constraints enabled
+- **Build / test:** `go build ./...`, `go test ./...`
+- **Dependencies:** modernc.org/sqlite (SQLite), nothing else at runtime
+- **Deployment:** Single binary, containerized (Docker), compose for local dev
 
 ## Invariants (do not break without a recorded decision)
-- <atomic writes / CAS / single static binary / …>
-- <the check that must always pass>
+- Single static binary deployable; no separate runtime/config files
+- SQLite database must survive container restarts (volume mount)
+- All HTTP handlers must return appropriate status codes; /healthz always 200
+- Projects and Tasks reference integrity: foreign key constraints enforced
+- Embedded templates: no external HTML files at runtime
 <!-- specd:managed:steering/tech.md:v1 end -->

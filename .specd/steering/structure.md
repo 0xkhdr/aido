@@ -1,24 +1,21 @@
 <!-- specd:managed:steering/structure.md:v1 begin -->
 # Steering: Structure
 
-> Fill this in for your project. Map the code so a task can find its files without
-> scanning the whole tree. Replace the prompts below.
-
 ## Layout
-- **<dir>/** — <what lives here>
-- **<dir>/** — <what lives here>
+- **main.go** — Server startup, signal handling, env config
+- **internal/db/** — SQLite store, migrations, data models (Project, Task)
+- **internal/handlers/** — HTTP handlers, template rendering, routes
+- **internal/handlers/templates/** — Embedded HTML templates (index, fragments)
+- **.specd/specs/** — Spec lifecycle (requirements, design, tasks, state)
 
 ## Naming & patterns
-- <naming convention a change must follow>
-- <where tests live relative to source>
+- Package names lowercase, plural for collections (db, handlers, templates)
+- Store methods: `Open()`, `Close()`, `Migrate()`, then CRUD (Create*, Get*, Update*, Delete*)
+- Handler methods prefixed with HTTP verb: `home`, `createProject`, `selectProject`, `toggleTask`
+- Tests colocated: `*_test.go` in same package
+- Error variables uppercase: `ErrEmptyName`, `ErrNoProject`, etc.
 
 ## Spec authoring format
-- `design.md` decision contract: declare `references:` (the `R<n>` requirements it
-  traces to), plus `boundaries:`, `interfaces:`, `invariants:`, `failure:`,
-  `integration:`, `alternatives:`, `disposition:`, and `owner:`. An unknown
-  reference is always refused; the full contract is required under the production
-  profile.
-- `tasks.md` optional trace/risk columns: `refs`, `kind`, `risk`, `complexity`,
-  `capabilities`, `context`, `evidence`, `checks`. The six required columns alone are a valid table; the rest may be omitted —
-  the production planning profile requires the full set.
+- `design.md` decision contract: declare `references:`, `boundaries:`, `interfaces:`, `invariants:`, `failure:`, `integration:`, `alternatives:`, `disposition:`, `owner:`
+- `tasks.md` full columns: `role`, `files`, `depends-on`, `verify`, `acceptance`, plus `refs`, `kind`, `risk`, `complexity`, `capabilities`, `context`, `evidence`, `checks`
 <!-- specd:managed:steering/structure.md:v1 end -->

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "slug": "missing-features",
+  "mode": "default",
+  "status": "executing",
+  "phase": "execute",
+  "revision": 3,
+  "records": {
+    "approval:design": {
+      "kind": "approval",
+      "text": "design → tasks",
+      "gate": "design",
+      "approved_revision": 1,
+      "source_digest": "b319fe9ae59ef0ec88fc571928613205604dd672b968fab3d15abefe07c0e50b",
+      "timestamp": "2026-07-19T23:50:26Z",
+      "git_head": "ce980850fe4b35b1b565a8f04bea5329c58dc04c",
+      "actor": "xkhdr"
+    },
+    "approval:requirements": {
+      "kind": "approval",
+      "text": "requirements → design",
+      "gate": "requirements",
+      "source_digest": "b74f648553332ac5de8183a3a59249ad0fbc7b6b48aebab5e35abe7922d41251",
+      "timestamp": "2026-07-19T23:47:20Z",
+      "git_head": "ce980850fe4b35b1b565a8f04bea5329c58dc04c",
+      "actor": "xkhdr"
+    },
+    "approval:tasks": {
+      "kind": "approval",
+      "text": "tasks → executing",
+      "gate": "tasks",
+      "approved_revision": 2,
+      "timestamp": "2026-07-19T23:50:54Z",
+      "git_head": "ce980850fe4b35b1b565a8f04bea5329c58dc04c",
+      "actor": "xkhdr"
+    }
+  }
+}
