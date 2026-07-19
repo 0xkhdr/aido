@@ -1,0 +1,4 @@
+verify:
+  timeout_seconds: 600
+orchestration:
+  enabled: true
