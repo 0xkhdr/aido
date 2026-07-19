@@ -1,6 +1,0 @@
-{"task_id":"T1","command":"go test ./internal/db/...","exit_code":0,"git_head":"289ca47cae7da5a25081a19dfb9e699388f60dc9","timestamp":"2026-07-18T00:55:09Z","actor":"xkhdr"}
-{"task_id":"T1","command":"go test ./internal/db/...","exit_code":0,"git_head":"289ca47cae7da5a25081a19dfb9e699388f60dc9","timestamp":"2026-07-18T00:57:33Z","actor":"xkhdr"}
-{"task_id":"T1","command":"go test ./internal/db/...","exit_code":0,"git_head":"289ca47cae7da5a25081a19dfb9e699388f60dc9","timestamp":"2026-07-18T01:04:38Z","actor":"xkhdr"}
-{"task_id":"T2","command":"go build ./... \u0026\u0026 go test ./internal/handlers/...","exit_code":0,"git_head":"289ca47cae7da5a25081a19dfb9e699388f60dc9","timestamp":"2026-07-18T01:17:06Z","actor":"xkhdr"}
-{"task_id":"T3","command":"go build ./... \u0026\u0026 go vet ./...","exit_code":0,"git_head":"289ca47cae7da5a25081a19dfb9e699388f60dc9","timestamp":"2026-07-18T01:17:07Z","actor":"xkhdr"}
-{"task_id":"T4","command":"go build ./... \u0026\u0026 go run . \u0026 sleep 1; curl -sf localhost:8080/ \u003e/dev/null; kill %1","exit_code":1,"git_head":"289ca47cae7da5a25081a19dfb9e699388f60dc9","timestamp":"2026-07-18T01:20:00Z","actor":"xkhdr"}
