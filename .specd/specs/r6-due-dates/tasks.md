@@ -1,0 +1,11 @@
+# Tasks — r6-due-dates
+
+| id | role | files | depends-on | verify | acceptance | refs | kind | risk | complexity | capabilities | context | evidence | checks |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| T1 | craftsman | `internal/db/migrations/add_due_date.sql`, `internal/db/store.go` | - | `sqlite3 aido.db ".schema tasks"` | schema includes due_date column, nullable | R6.2, D1 | schema | low | simple | write | DB migration | schema/due-date | column exists, null by default |
+| T2 | craftsman | `internal/handlers/tasks.go` | T1 | `go test ./internal/handlers -run TestUpdateTaskDueDate` | update due_date, verify DB, verify 400 on invalid date | R6.2.1, R6.2.4 | feature | low | standard | read,write | PATCH handler, date validation | test/due-date-update | invalid format |
+| T3 | craftsman | `internal/handlers/tasks.go` | T1 | `go test ./internal/handlers -run TestClearDueDate` | set due_date to null, verify DB stores NULL | R6.2.3 | feature | low | simple | read,write | PATCH handler | test/clear-due-date | null handling |
+| T4 | craftsman | `internal/handlers/templates/project-list.html` | T1 | `grep -n "overdue" internal/handlers/templates/project-list.html` | task list renders overdue badge for due_date < today | R6.2.2 | feature | low | simple | write | template rendering, date comparison | test/manual-overdue | past date detection |
+| T5 | craftsman | `internal/handlers/templates/task-detail.html` | T1 | `grep -n 'type="date"' internal/handlers/templates/task-detail.html` | task detail has date input field, pre-filled with current due_date | R6.2.1 | feature | low | simple | write | template rendering | test/manual-date-input | date picker works |
+| T6 | craftsman | `internal/handlers/templates/static/style.css` | - | `grep "badge-overdue" internal/handlers/templates/static/style.css` | overdue badge style defined with red background | R6.2.2 | feature | low | simple | write | CSS | test/manual-colors | contrast meets WCAG |
+| T7 | craftsman | `internal/handlers/tasks_test.go` | T2,T3 | `go test ./internal/handlers -run TestDueDate -v` | full test suite for due_date CRUD | - | test | low | simple | read,write | test fixtures | test/due-date-full | edge cases |

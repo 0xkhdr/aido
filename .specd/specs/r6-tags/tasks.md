@@ -1,0 +1,11 @@
+# Tasks — r6-tags
+
+| id | role | files | depends-on | verify | acceptance | refs | kind | risk | complexity | capabilities | context | evidence | checks |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| T1 | craftsman | `internal/db/migrations/add_tags.sql`, `internal/db/store.go` | - | `sqlite3 aido.db ".schema tags"` | schema includes tags and task_tags tables | R6.6, D1 | schema | low | simple | write | DB migration, FK setup | schema/tags | tables exist, FK correct |
+| T2 | craftsman | `internal/handlers/tasks.go` | T1 | `curl -X PATCH http://localhost:8080/api/projects/1/tasks/1/tags -d '{"tags":["urgent","design"]}'` | PATCH creates tags if needed, links to task, validates tag format | R6.6.1, R6.6.4 | feature | low | standard | read,write | PATCH handler, validation | test/tags-create | DB join table updated |
+| T3 | craftsman | `internal/handlers/tasks.go` | T1 | `curl -X PATCH http://localhost:8080/api/projects/1/tasks/1/tags -d '{"tags":[]}'` | PATCH removes all tags, cleans up unused tags from DB | R6.6.3 | feature | low | standard | read,write | PATCH handler, cleanup | test/tags-remove | DB cleaned |
+| T4 | craftsman | `internal/handlers/templates/task-detail.html` | T1 | `grep -n "tag" internal/handlers/templates/task-detail.html` | task detail displays tags as pills, has input field to add/edit tags | R6.6.2 | feature | low | simple | write | template rendering | test/manual-tags-display | tags visible |
+| T5 | craftsman | `internal/handlers/templates/static/style.css` | - | `grep -n "tag-pill\|badge-tag" internal/handlers/templates/static/style.css` | tag pill styling (background, padding, border-radius, hover effect) | R6.6.2 | feature | low | simple | write | CSS | test/manual-tag-styling | looks good |
+| T6 | craftsman | `internal/handlers/templates/project-list.html` | T4 | `grep -n "tag" internal/handlers/templates/project-list.html` | task list rows show 2-3 tags with "..." if more | R6.6.2 | feature | low | simple | write | template rendering | test/manual-tags-list | tags visible in list |
+| T7 | craftsman | `internal/handlers/tasks_test.go` | T2,T3 | `go test ./internal/handlers -run TestTags -v` | full test suite: add tags, remove tags, invalid tag, cleanup | - | test | low | standard | read,write | test fixtures | test/tags-full | edge cases, SQL injection |
