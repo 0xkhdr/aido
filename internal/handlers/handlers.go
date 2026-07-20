@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"aido/internal/db"
 )
@@ -31,7 +32,10 @@ type pageData struct {
 
 // New builds a Handler with parsed templates.
 func New(store *db.Store) *Handler {
-	tmpl := template.Must(template.ParseFS(templatesFS, "templates/*.html"))
+	funcMap := template.FuncMap{
+		"now": func() time.Time { return time.Now() },
+	}
+	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFS(templatesFS, "templates/*.html"))
 	return &Handler{store: store, tmpl: tmpl}
 }
 
@@ -50,6 +54,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/projects/{projectId}/tasks/{taskId}", h.updateTask)
 	mux.HandleFunc("PUT /tasks/{id}/description", h.updateTaskDescription)
 	mux.HandleFunc("GET /tasks/{id}/priority", h.getPriority)
+	mux.HandleFunc("POST /tasks/{id}/priority", h.updateTaskPriority)
 	mux.HandleFunc("POST /api/projects/{projectId}/bulk-actions", h.bulkActions)
 	mux.HandleFunc("POST /tasks/quick-create", h.quickCreateTask)
 	mux.HandleFunc("GET /api/projects/{projectId}/search", h.searchTasks)

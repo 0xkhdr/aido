@@ -92,6 +92,56 @@ func (h *Handler) getPriority(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"priority": priority})
 }
 
+// updateTaskPriority handles POST /tasks/:id/priority to set a task's priority.
+// Request body: { "priority": "high"|"medium"|"low" }
+// Returns 200 with updated task JSON, 400 for invalid priority, 404 for missing task.
+func (h *Handler) updateTaskPriority(w http.ResponseWriter, r *http.Request) {
+	taskID, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+
+	var req struct {
+		Priority string `json:"priority"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
+		return
+	}
+
+	// Validate priority
+	validPriorities := map[string]bool{"high": true, "medium": true, "low": true}
+	if !validPriorities[req.Priority] {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "priority must be 'high', 'medium', or 'low'"})
+		return
+	}
+
+	// Update priority in database
+	if err := h.store.UpdateTaskPriority(taskID, req.Priority); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "task not found"})
+		return
+	}
+
+	// Fetch and return updated task
+	task, err := h.store.GetTask(taskID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "task not found"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(task)
+}
+
 // bulkActions handles POST /api/projects/:projectId/bulk-actions.
 // Supports actions: mark-done, delete, change-priority.
 // Request body: { task_ids: [1,2,3], action: "mark-done"|"delete"|"change-priority", priority?: "high" }
