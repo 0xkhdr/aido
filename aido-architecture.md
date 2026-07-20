@@ -48,9 +48,9 @@ A backend developer on the **taxi** project lands on Aido. They describe a bug: 
 
 Aido:
 1. Reads `.aido/config.yaml` to know the project's required documents
-2. Reads `docs/architecture.md` to understand the system map
-3. Reads `docs/domain-model.md#ride-lifecycle` to understand state transitions
-4. Reads `docs/redis-caching-strategy.md` because caching was mentioned
+2. Reads `.aido/docs/architecture.md` to understand the system map
+3. Reads `.aido/docs/domain-model.md#ride-lifecycle` to understand state transitions
+4. Reads `.aido/docs/redis-caching-strategy.md` because caching was mentioned
 5. If unclear, asks the coding agent: "List files in `internal/ride/` that handle ETA"
 6. Synthesizes understanding
 7. Produces a structured EARS specification in `.aido/requests/req-003.md`
@@ -58,7 +58,7 @@ Aido:
 
 The developer reviews the spec, edits it, and saves.
 
-Later, a coding agent reads `.aido/requests/req-003.md`, implements the code, updates `docs/redis-caching-strategy.md` to reflect new invalidation logic, and appends a line to `.aido/witness/2026-07-20.log`.
+Later, a coding agent reads `.aido/requests/req-003.md`, implements the code, updates `.aido/docs/redis-caching-strategy.md` to reflect new invalidation logic, and appends a line to `.aido/witness/2026-07-20.log`.
 
 Aido witnesses the commit, sees the linked doc was updated, and marks the request as fully documented.
 
@@ -70,7 +70,9 @@ Aido witnesses the commit, sees the linked doc was updated, and marks the reques
 
 ```
 .aido/
-├── config.yaml              # Project configuration
+├── config.yaml              # Project configuration (repo-safe)
+├── .secrets.yaml            # API keys (git-ignored)
+├── .gitignore               # Aido-managed ignore rules
 ├── requests/                # All processed requests and their specs
 │   ├── req-001.md
 │   └── req-002.md
@@ -79,6 +81,7 @@ Aido witnesses the commit, sees the linked doc was updated, and marks the reques
 │   └── 2026-07-20.log
 ├── templates/               # Templates for spec generation
 │   └── ears.md
+├── mcp-server/              # MCP server for coding agent bridge
 └── docs/                    # Foundational project documents
     ├── architecture.md
     ├── domain-model.md
@@ -90,6 +93,8 @@ Aido witnesses the commit, sees the linked doc was updated, and marks the reques
 ```
 
 ### `config.yaml`
+
+Repo-safe. No secrets. Only references to external key sources.
 
 ```yaml
 project: taxi
@@ -103,8 +108,84 @@ required_docs:
   - docs/api-contracts.md
   - docs/operations.md
 
+llm:
+  default_provider: openrouter
+  default_model: anthropic/claude-sonnet-4-20250514
+
+  providers:
+    openai:
+      api_key_source: env:OPENAI_API_KEY
+      base_url: https://api.openai.com/v1
+
+    anthropic:
+      api_key_source: env:ANTHROPIC_API_KEY
+
+    mistral:
+      api_key_source: env:MISTRAL_API_KEY
+      base_url: https://api.mistral.ai/v1
+
+    nvidia_nim:
+      api_key_source: env:NVIDIA_API_KEY
+      base_url: https://integrate.api.nvidia.com/v1
+
+    openrouter:
+      api_key_source: env:OPENROUTER_API_KEY
+      base_url: https://openrouter.ai/api/v1
+
+    ollama:
+      base_url: http://localhost:11434
+      api_key_source: none
+
+  tasks:
+    spec_generation: anthropic/claude-sonnet-4-20250514
+    cheap_exploration: mistral/mistral-small-latest
+    summary: ollama/llama3.1:8b
+
+coding_agent:
+  active: cursor
+
+  agents:
+    cursor:
+      type: mcp
+      mcp_server_path: .aido/mcp-server/
+    claude_code:
+      type: cli
+      command: claude
+    windsurf:
+      type: mcp
+      mcp_server_path: .aido/mcp-server/
+    custom:
+      type: mcp
+      mcp_server_path: /path/to/custom/mcp
+
 auto_sync: false
 ```
+
+### `.secrets.yaml` (Git-Ignored)
+
+```yaml
+# NEVER COMMIT THIS FILE
+# Add to .gitignore: .aido/.secrets.yaml
+
+openai_api_key: sk-...
+anthropic_api_key: sk-ant-...
+mistral_api_key: ...
+nvidia_api_key: nvapi-...
+openrouter_api_key: sk-or-...
+```
+
+### API Key Resolution Order
+
+Aido resolves API keys in this priority:
+
+1. **Environment variable** (highest priority)
+   - Example: `export OPENAI_API_KEY=sk-...`
+2. **`.aido/.secrets.yaml`** (fallback)
+   - Read from git-ignored file
+3. **OS keyring** (optional)
+   - `api_key_source: keyring:aido:openai`
+4. **Interactive prompt** (last resort)
+   - Aido asks user to input key, stores in `.secrets.yaml`
 
 ### Request Specification Format
 
@@ -174,17 +255,77 @@ Plain text, append-only:
 
 ---
 
+## LLM Configuration
+
+Aido manages its own LLM configuration. The user provides API keys and selects models. Aido handles prompts, instructions, and model routing independently.
+
+### Supported Providers
+
+| Provider | Type | Use Case |
+|----------|------|----------|
+| OpenAI | Paid | Reliable, fast spec generation |
+| Anthropic | Paid | Long context, good at structured output |
+| Mistral | Free/Cheap | Cost-conscious users |
+| NVIDIA NIM | Free/Self-hosted | Privacy-sensitive, local inference |
+| OpenRouter | Aggregator | Access to many models, fallback routing |
+| Ollama | Local | Fully offline, no API calls |
+
+### Task-Based Model Routing
+
+Aido routes prompts to the appropriate model based on task type:
+
+| Task | Typical Model | Why |
+|------|---------------|-----|
+| Spec generation | Claude Sonnet / GPT-4 | Complex reasoning, structured output |
+| Cheap exploration | Mistral Small / local 8B | Low cost, fast, factual |
+| Document summary | Ollama Llama 3.1 8B | Free, local, sufficient |
+| Quick classification | Mistral Small | Fast, cheap |
+
+---
+
+## Coding Agent Integration
+
+User chooses their coding agent from supported options. This agent is used for cheap knowledge exploration only — never for spec generation or document synthesis.
+
+### Supported Agents
+
+| Agent | Bridge Type | Status |
+|-------|-------------|--------|
+| Cursor | MCP server | Planned |
+| Claude Code | CLI / Tool use | Planned |
+| Windsurf | MCP server | Planned |
+| GitHub Copilot | VS Code extension API | Future |
+| Custom | Generic MCP server | Supported |
+
+### Cheap Inquiry Examples
+
+Aido asks coding agent for facts, not reasoning:
+
+| Inquiry | Agent Action | Aido Uses Result For |
+|---------|-----------|----------------------|
+| `list_files("internal/ride/")` | Returns file list | Knowing where to look |
+| `grep("RideStatus", "internal/ride/*.go")` | Returns matches | Understanding state machine |
+| `read_signatures("internal/ride/cache.go")` | Returns func signatures | Knowing cache interface |
+| `git_log("--oneline", "internal/ride/", "-10")` | Returns recent commits | Understanding recent changes |
+
+The coding agent does **no reasoning** — just returns raw text. Aido's LLM does the synthesis.
+
+---
+
 ## Workflow
 
 ### Phase 1: Project Onboarding
 
-1. Developer creates project "taxi", points to local repo path
+1. Developer runs `aido init taxi`, points to local repo path
 2. Aido detects git repository, suggests tracking branch "main"
 3. Developer confirms
-4. Aido initializes `.aido/` directory with `config.yaml`, `templates/`, `requests/`, `witness/`
-5. Aido checks for required documents in `.aido/docs/`
-6. If missing, Aido generates templates and warns: "Project not ready — add required documents"
-7. Once present, Aido records `last_sync_commit` and is ready
+4. Aido initializes `.aido/` directory with `config.yaml`, `.gitignore`, `templates/`, `requests/`, `witness/`
+5. Aido asks for LLM provider and model preference
+6. Aido securely stores API key in `.aido/.secrets.yaml` (git-ignored)
+7. Aido asks for coding agent preference
+8. Aido checks for required documents in `.aido/docs/`
+9. If missing, Aido generates templates and warns: "Project not ready — add required documents"
+10. Once present, Aido records `last_sync_commit` and is ready
 
 ### Phase 2: Request Ingestion (Any Input)
 
@@ -193,9 +334,10 @@ Plain text, append-only:
 3. Aido reads `.aido/config.yaml` for required documents
 4. Aido reads relevant `.aido/docs/` files (whole or by section header)
 5. If unclear, Aido asks coding agent cheap exploratory questions
-6. Aido produces structured spec in `.aido/requests/{id}.md`
-7. Aido stores explicit links in `.aido/links.yaml`
-8. Developer reviews, edits, confirms
+6. Aido routes spec generation to configured LLM
+7. Aido produces structured spec in `.aido/requests/{id}.md`
+8. Aido stores explicit links in `.aido/links.yaml`
+9. Developer reviews, edits, confirms
 
 ### Phase 3: Implementation
 
@@ -276,6 +418,9 @@ Deterministic retrieval eliminates embedding infrastructure and opaque retrieval
 5. **Agent is optional assistant.** Coding agent helps Aido explore, then implements.
 6. **Communication is file-based.** No APIs, no protocols, no tokens wasted on plumbing.
 7. **Witness, don't enforce.** Aido observes and flags. Action is human.
+8. **Secrets never in repo.** API keys live in environment or git-ignored files.
+9. **Aido owns its LLM.** Aido manages prompts, model selection, and instructions independently.
+10. **Pluggable providers.** User chooses model and provider based on cost, privacy, and quality needs.
 
 ---
 

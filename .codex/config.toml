@@ -1,0 +1,13 @@
+# specd:pinky begin
+[agents.pinky-scout]
+config = ".codex/agents/pinky-scout.toml"
+
+[agents.pinky-craftsman]
+config = ".codex/agents/pinky-craftsman.toml"
+
+[agents.pinky-validator]
+config = ".codex/agents/pinky-validator.toml"
+
+[agents.pinky-auditor]
+config = ".codex/agents/pinky-auditor.toml"
+# specd:pinky end
