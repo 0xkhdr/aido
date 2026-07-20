@@ -1,3 +1,13 @@
+<dialog id="delete-confirm">
+  <div>
+    <p id="delete-confirm-msg">Confirm delete N selected tasks? This cannot be undone.</p>
+    <div>
+      <button id="delete-cancel">Cancel</button>
+      <button id="delete-submit">Confirm Delete</button>
+    </div>
+  </div>
+</dialog>
+
 <ul id="task-list">
   {{ $active := .Active.ID }}
   {{ range .Tasks }}

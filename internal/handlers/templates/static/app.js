@@ -88,10 +88,10 @@ function initBulkToolbar() {
   });
 
   document.querySelector('[data-action="delete"]')?.addEventListener('click', () => {
-    const confirmed = confirm(`Delete ${selectedTasks.size} selected tasks?`);
-    if (confirmed) {
-      bulkAction('delete');
-    }
+    const dialog = document.getElementById('delete-confirm');
+    const msg = document.getElementById('delete-confirm-msg');
+    msg.textContent = `Confirm delete ${selectedTasks.size} selected tasks? This cannot be undone.`;
+    dialog.showModal();
   });
 
   document.querySelector('[name="priority"]')?.addEventListener('change', (e) => {
@@ -99,6 +99,16 @@ function initBulkToolbar() {
       bulkAction('change-priority', { priority: e.target.value });
       e.target.value = '';
     }
+  });
+
+  // Delete confirmation dialog buttons
+  document.getElementById('delete-cancel')?.addEventListener('click', () => {
+    document.getElementById('delete-confirm').close();
+  });
+
+  document.getElementById('delete-submit')?.addEventListener('click', () => {
+    document.getElementById('delete-confirm').close();
+    bulkAction('delete');
   });
 }
 
