@@ -139,6 +139,25 @@ func (s *Store) Migrate() error {
 		}
 	}
 
+	if _, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS tags (
+			id   INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE
+		);
+	`); err != nil {
+		return err
+	}
+
+	if _, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS task_tags (
+			task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+			tag_id  INTEGER REFERENCES tags(id) ON DELETE CASCADE,
+			PRIMARY KEY (task_id, tag_id)
+		);
+	`); err != nil {
+		return err
+	}
+
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id)`); err != nil {
 		return err
 	}
@@ -375,6 +394,9 @@ func (s *Store) ListTasksByProject(projectID int64) ([]Task, error) {
 			dt, _ := time.Parse("2006-01-02", dueStr)
 			t.DueDate = &dt
 		}
+		if tags, err := s.GetTaskTags(t.ID); err == nil {
+			t.Tags = tags
+		}
 		out = append(out, t)
 	}
 	return out, rows.Err()
@@ -399,6 +421,9 @@ func (s *Store) GetTask(id int64) (Task, error) {
 	if dueStr.Valid && dueStr.String != "" {
 		dt, _ := time.Parse("2006-01-02", dueStr.String)
 		t.DueDate = &dt
+	}
+	if tags, err := s.GetTaskTags(t.ID); err == nil {
+		t.Tags = tags
 	}
 	return t, nil
 }
@@ -606,6 +631,9 @@ func (s *Store) UpdateTask(id int64, title string, done bool) (Task, error) {
 		dt, _ := time.Parse("2006-01-02", dueStr)
 		t.DueDate = &dt
 	}
+	if tags, err := s.GetTaskTags(t.ID); err == nil {
+		t.Tags = tags
+	}
 	return t, nil
 }
 
@@ -649,6 +677,9 @@ func (s *Store) ListTasksByDueDateRange(projectID int64, after, before time.Time
 		if dueStr != "" {
 			dt, _ := time.Parse("2006-01-02", dueStr)
 			t.DueDate = &dt
+		}
+		if tags, err := s.GetTaskTags(t.ID); err == nil {
+			t.Tags = tags
 		}
 		out = append(out, t)
 	}
