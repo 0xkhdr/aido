@@ -1,7 +1,4 @@
-verify.timeout_seconds: 600
-orchestration.enabled: true
-routing.version: 1
-routing.classes: default
-routing.default_class: default
-routing.fallback: default
-routing.class_capabilities: default=context+eval+read+review+sandbox+write
+verify:
+  timeout_seconds: 600
+orchestration:
+  enabled: true
