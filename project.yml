@@ -1,4 +1,3 @@
-verify:
-  timeout_seconds: 600
-orchestration:
-  enabled: true
+context.max_tokens: 40000
+orchestration.enabled: true
+agent: claude

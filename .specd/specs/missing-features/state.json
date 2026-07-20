@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "slug": "missing-features",
-  "mode": "default",
+  "mode": "orchestrated",
   "status": "executing",
   "phase": "execute",
-  "revision": 3,
+  "revision": 6,
   "records": {
     "approval:design": {
       "kind": "approval",
@@ -14,6 +14,14 @@
       "source_digest": "b319fe9ae59ef0ec88fc571928613205604dd672b968fab3d15abefe07c0e50b",
       "timestamp": "2026-07-19T23:50:26Z",
       "git_head": "ce980850fe4b35b1b565a8f04bea5329c58dc04c",
+      "actor": "xkhdr"
+    },
+    "approval:orchestrated": {
+      "kind": "approval",
+      "gate": "orchestrated",
+      "approved_revision": 3,
+      "timestamp": "2026-07-19T23:59:17Z",
+      "git_head": "674b31b350924c7c807c82c3304ae61087c62605",
       "actor": "xkhdr"
     },
     "approval:requirements": {
@@ -34,5 +42,9 @@
       "git_head": "ce980850fe4b35b1b565a8f04bea5329c58dc04c",
       "actor": "xkhdr"
     }
+  },
+  "task_status": {
+    "T5": "complete",
+    "T6": "complete"
   }
 }

@@ -1,0 +1,37 @@
+{
+  "id": "missing-features",
+  "revision": 2,
+  "step": 1,
+  "pending_missions": [
+    {
+      "protocol_version": "1",
+      "session_id": "missing-features",
+      "mission_id": "missing-features.s1.T-R6",
+      "spec_slug": "missing-features",
+      "task_id": "T-R6",
+      "attempt": 1,
+      "role": "scout",
+      "authority_ref": "approval:tasks",
+      "declared_files": null,
+      "acceptance": [
+        "-"
+      ],
+      "verify": "-",
+      "context_ref": "context:missing-features:T-R6",
+      "context_digest": "b0c65b51653b9bd7708ccaedc838417ed953bae30ab30e6b7382a782d022641e",
+      "config_digest": "be3fd9d0f44dabe3150b144b288877cd31aa431405a91387a3d48e6222ed1ba5",
+      "palette_digest": "2ea2c7b4851567708d617261c90b245566c073be3dd5b5b07f9e90fab7bc83d4",
+      "policy_digest": "be3fd9d0f44dabe3150b144b288877cd31aa431405a91387a3d48e6222ed1ba5",
+      "subject_head": "674b31b350924c7c807c82c3304ae61087c62605",
+      "route_class": "default",
+      "route_reason": "policy=1 risk=low complexity=simple capabilities=",
+      "limits": {
+        "max_attempts": 4,
+        "timeout_seconds": 900
+      },
+      "issued_at": "2026-07-20T03:01:57.963439583+03:00",
+      "expires_at": "2026-07-20T03:16:57.963439583+03:00",
+      "status": "pending"
+    }
+  ]
+}
