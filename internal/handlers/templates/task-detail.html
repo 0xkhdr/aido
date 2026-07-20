@@ -1,0 +1,135 @@
+{{ define "task-detail.html" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ with index .Tasks 0 }}{{ .Title }}{{ end }} - ai-do</title>
+  <script src="https://unpkg.com/htmx.org@2.0.3" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --space-1: .4rem;
+      --space-2: .8rem;
+      --space-3: 1.2rem;
+      --space-4: 2rem;
+      --radius: .6rem;
+      --accent: #4f46e5;
+      --bg: Canvas;
+      --fg: CanvasText;
+      --muted: color-mix(in srgb, CanvasText 55%, Canvas);
+      --line: color-mix(in srgb, CanvasText 15%, Canvas);
+      --panel: color-mix(in srgb, CanvasText 4%, Canvas);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--fg); background: var(--bg); }
+
+    .container { max-width: 50rem; margin: 0 auto; padding: var(--space-4); }
+    .back-link { display: inline-block; margin-bottom: var(--space-4); }
+    .back-link a { color: var(--accent); text-decoration: none; }
+    .back-link a:hover { text-decoration: underline; }
+
+    .task-header { margin-bottom: var(--space-4); }
+    .task-title { font-size: 1.5rem; margin: 0 0 var(--space-2) 0; }
+
+    .task-status { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); }
+    .task-status input[type="checkbox"] { cursor: pointer; }
+    .task-status.done { color: var(--muted); }
+    .task-status.done .status-label { text-decoration: line-through; }
+
+    .task-metadata {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      padding: var(--space-3);
+      background: var(--panel);
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    .metadata-row { display: flex; justify-content: space-between; }
+    .metadata-label { color: var(--muted); }
+    .metadata-value { font-family: monospace; }
+
+    .task-description-section {
+      margin-top: var(--space-4);
+      padding: var(--space-3);
+      background: var(--panel);
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+    }
+    .task-description-label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: var(--space-2);
+    }
+    .task-description-textarea {
+      width: 100%;
+      min-height: 200px;
+      padding: var(--space-2);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", monospace;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      overflow-y: auto;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      resize: vertical;
+    }
+    .task-description-textarea:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 0;
+    }
+
+    @media (max-width: 40rem) {
+      .container { padding: var(--space-3); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="back-link">
+      <a href="/projects/{{ .Active.ID }}">← Back to {{ .Active.Name }}</a>
+    </div>
+    {{ with index .Tasks 0 }}
+    <div class="task-header">
+      <h1 class="task-title">{{ .Title }}</h1>
+      <div class="task-status {{ if .Done }}done{{ end }}">
+        <input type="checkbox" {{ if .Done }}checked{{ end }}
+          hx-post="/tasks/{{ .ID }}/toggle?project={{ $.Active.ID }}"
+          hx-target=".task-status"
+          hx-swap="outerHTML"
+          aria-label="Toggle done">
+        <span class="status-label">{{ if .Done }}Completed{{ else }}Active{{ end }}</span>
+      </div>
+    </div>
+    <div class="task-metadata">
+      <div class="metadata-row">
+        <span class="metadata-label">ID</span>
+        <span class="metadata-value">#{{ .ID }}</span>
+      </div>
+      <div class="metadata-row">
+        <span class="metadata-label">Project</span>
+        <span class="metadata-value">{{ $.Active.Name }}</span>
+      </div>
+      <div class="metadata-row">
+        <span class="metadata-label">Created</span>
+        <span class="metadata-value">{{ .CreatedAt.Format "Jan 2, 2006 at 15:04" }}</span>
+      </div>
+    </div>
+    <div class="task-description-section">
+      <label class="task-description-label">Description</label>
+      <form hx-put="/tasks/{{ .ID }}/description?project={{ $.Active.ID }}" hx-trigger="change delay:500ms" hx-target=".task-description-textarea">
+        <textarea class="task-description-textarea" name="description" placeholder="Task description (multiline OK, max 10000 chars)" maxlength="10000">{{ .Description }}</textarea>
+      </form>
+    </div>
+    {{ end }}
+  </div>
+</body>
+</html>
+{{ end }}

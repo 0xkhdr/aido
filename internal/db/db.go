@@ -33,11 +33,12 @@ type Project struct {
 
 // Task is a single todo item belonging to exactly one project.
 type Task struct {
-	ID        int64
-	ProjectID int64
-	Title     string
-	Done      bool
-	CreatedAt time.Time
+	ID          int64
+	ProjectID   int64
+	Title       string
+	Description string
+	Done        bool
+	CreatedAt   time.Time
 }
 
 // Open connects to the SQLite database at path with sane pragmas.
@@ -74,11 +75,12 @@ func (s *Store) Migrate() error {
 
 	if _, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS tasks (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
-			project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
-			title      TEXT NOT NULL,
-			done       INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_id  INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+			title       TEXT NOT NULL,
+			description TEXT,
+			done        INTEGER NOT NULL DEFAULT 0,
+			created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 		);
 	`); err != nil {
 		return err
@@ -91,6 +93,17 @@ func (s *Store) Migrate() error {
 	}
 	if !hasProjectID {
 		if _, err := s.db.Exec(`ALTER TABLE tasks ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE`); err != nil {
+			return err
+		}
+	}
+
+	// Legacy databases predate description; add the column when missing.
+	hasDescription, err := s.columnExists("tasks", "description")
+	if err != nil {
+		return err
+	}
+	if !hasDescription {
+		if _, err := s.db.Exec(`ALTER TABLE tasks ADD COLUMN description TEXT`); err != nil {
 			return err
 		}
 	}
@@ -310,7 +323,7 @@ func (s *Store) CreateTask(projectID int64, title string) (Task, error) {
 // ListTasksByProject returns the tasks belonging to one project, newest first
 // (R4.1).
 func (s *Store) ListTasksByProject(projectID int64) ([]Task, error) {
-	rows, err := s.db.Query(`SELECT id, project_id, title, done, created_at FROM tasks WHERE project_id = ? ORDER BY id DESC`, projectID)
+	rows, err := s.db.Query(`SELECT id, project_id, title, COALESCE(description, ''), done, created_at FROM tasks WHERE project_id = ? ORDER BY id DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -322,13 +335,37 @@ func (s *Store) ListTasksByProject(projectID int64) ([]Task, error) {
 			t       Task
 			created string
 		)
-		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Done, &created); err != nil {
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Done, &created); err != nil {
 			return nil, err
 		}
 		t.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// GetTask returns a single task by ID.
+func (s *Store) GetTask(id int64) (Task, error) {
+	var (
+		t       Task
+		created string
+	)
+	err := s.db.QueryRow(`SELECT id, project_id, title, COALESCE(description, ''), done, created_at FROM tasks WHERE id = ?`, id).
+		Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Done, &created)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Task{}, errors.New("task not found")
+		}
+		return Task{}, err
+	}
+	t.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+	return t, nil
+}
+
+// UpdateTaskDescription persists the task's description.
+func (s *Store) UpdateTaskDescription(id int64, description string) error {
+	_, err := s.db.Exec(`UPDATE tasks SET description = ? WHERE id = ?`, description, id)
+	return err
 }
 
 // ToggleTask flips the done flag and persists it (R4.2).
@@ -341,6 +378,47 @@ func (s *Store) ToggleTask(id int64) error {
 func (s *Store) DeleteTask(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM tasks WHERE id = ?`, id)
 	return err
+}
+
+// UpdateTask updates a task's title and done status atomically (R3.3).
+// Returns ErrNoProject when task not found, or the updated task on success.
+func (s *Store) UpdateTask(id int64, title string, done bool) (Task, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return Task{}, ErrEmptyName
+	}
+
+	result, err := s.db.Exec(`UPDATE tasks SET title = ?, done = ? WHERE id = ?`, title, done, id)
+	if err != nil {
+		return Task{}, err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return Task{}, err
+	}
+	if changed == 0 {
+		return Task{}, ErrNoProject
+	}
+
+	// Fetch and return the updated task.
+	rows, err := s.db.Query(`SELECT id, project_id, title, COALESCE(description, ''), done, created_at FROM tasks WHERE id = ?`, id)
+	if err != nil {
+		return Task{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return Task{}, ErrNoProject
+	}
+
+	var (
+		t       Task
+		created string
+	)
+	if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Done, &created); err != nil {
+		return Task{}, err
+	}
+	t.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+	return t, nil
 }
 
 // scanner is satisfied by both *sql.Row and *sql.Rows.

@@ -1,0 +1,30 @@
+{{ define "task-edit.html" }}
+{{ with index .Tasks 0 }}
+<form class="task-edit-form"
+      hx-patch="/api/projects/{{ $.Active.ID }}/tasks/{{ .ID }}"
+      hx-target=".task-edit-form"
+      hx-swap="outerHTML">
+  <div class="form-group">
+    <label for="title">Title</label>
+    <input type="text" id="title" name="title" value="{{ .Title }}" required>
+  </div>
+
+  <div class="form-group">
+    <label for="description">Description</label>
+    <textarea id="description" name="description" placeholder="Task description (multiline OK, max 10000 chars)" maxlength="10000">{{ .Description }}</textarea>
+  </div>
+
+  <div class="form-group form-checkbox">
+    <label>
+      <input type="checkbox" name="completed" {{ if .Done }}checked{{ end }}>
+      Mark as completed
+    </label>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+    <button type="button" class="btn btn-secondary" hx-get="/project/{{ $.Active.ID }}/task/{{ .ID }}" hx-target=".task-edit-form" hx-swap="outerHTML">Cancel</button>
+  </div>
+</form>
+{{ end }}
+{{ end }}

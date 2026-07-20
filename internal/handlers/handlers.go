@@ -3,6 +3,7 @@ package handlers
 import (
 	"embed"
 	"errors"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -41,8 +42,13 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /projects", h.createProject)
 	mux.HandleFunc("GET /projects/{id}", h.selectProject)
 	mux.HandleFunc("POST /projects/{id}/tasks", h.createTask)
+	mux.HandleFunc("GET /project/{projectId}/task/{taskId}", h.getTask)
+	mux.HandleFunc("DELETE /api/projects/{id}", h.deleteProject)
 	mux.HandleFunc("POST /tasks/{id}/toggle", h.toggleTask)
 	mux.HandleFunc("DELETE /tasks/{id}", h.deleteTask)
+	mux.HandleFunc("PATCH /api/projects/{id}", h.updateProject)
+	mux.HandleFunc("PATCH /api/projects/{projectId}/tasks/{taskId}", h.updateTask)
+	mux.HandleFunc("PUT /tasks/{id}/description", h.updateTaskDescription)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -173,6 +179,53 @@ func (h *Handler) deleteTask(w http.ResponseWriter, r *http.Request) {
 	h.renderList(w, active)
 }
 
+// updateTaskDescription persists the task's description.
+func (h *Handler) updateTaskDescription(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	description := r.FormValue("description")
+	if len(description) > 10000 {
+		http.Error(w, "description exceeds 10000 characters", http.StatusBadRequest)
+		return
+	}
+	if err := h.store.UpdateTaskDescription(id, description); err != nil {
+		httpErr(w, err)
+		return
+	}
+	// Return the updated textarea for HTMX swap
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<textarea class="task-description-textarea" name="description" placeholder="Task description (multiline OK, max 10000 chars)" maxlength="10000">%s</textarea>`, template.HTMLEscapeString(description))
+}
+
+// getTask renders the task detail page showing all task metadata and inline edit controls (R3.1).
+func (h *Handler) getTask(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := parseID(w, r.PathValue("projectId"))
+	if !ok {
+		return
+	}
+	taskID, ok := parseID(w, r.PathValue("taskId"))
+	if !ok {
+		return
+	}
+	active, ok := h.lookupProject(w, projectID)
+	if !ok {
+		return
+	}
+	tasks, err := h.store.ListTasksByProject(active.ID)
+	if err != nil {
+		httpErr(w, err)
+		return
+	}
+	task, found := findTask(tasks, taskID)
+	if !found {
+		http.Error(w, "task not found", http.StatusNotFound)
+		return
+	}
+	h.render(w, "task-detail.html", pageData{Active: active, Tasks: []db.Task{task}})
+}
+
 // projectFromPath resolves the {id} path value to an existing project, writing
 // the appropriate error response and returning ok=false when it cannot.
 func (h *Handler) projectFromPath(w http.ResponseWriter, r *http.Request) (db.Project, bool) {
@@ -213,6 +266,16 @@ func parseID(w http.ResponseWriter, raw string) (int64, bool) {
 		return 0, false
 	}
 	return id, true
+}
+
+// findTask searches a task list for a task with the given ID.
+func findTask(tasks []db.Task, id int64) (db.Task, bool) {
+	for _, t := range tasks {
+		if t.ID == id {
+			return t, true
+		}
+	}
+	return db.Task{}, false
 }
 
 // renderList returns the #task-list fragment for one project (HTMX swap).
