@@ -39,7 +39,15 @@ type Task struct {
 	Description string
 	Done        bool
 	Priority    string // "low", "medium", "high", or ""
+	DueDate     *time.Time
+	Tags        []string
 	CreatedAt   time.Time
+}
+
+// Tag is a label for organizing tasks.
+type Tag struct {
+	ID   int64
+	Name string
 }
 
 // Open connects to the SQLite database at path with sane pragmas.
@@ -116,6 +124,17 @@ func (s *Store) Migrate() error {
 	}
 	if !hasPriority {
 		if _, err := s.db.Exec(`ALTER TABLE tasks ADD COLUMN priority TEXT`); err != nil {
+			return err
+		}
+	}
+
+	// Legacy databases predate due_date; add the column when missing.
+	hasDueDate, err := s.columnExists("tasks", "due_date")
+	if err != nil {
+		return err
+	}
+	if !hasDueDate {
+		if _, err := s.db.Exec(`ALTER TABLE tasks ADD COLUMN due_date TEXT`); err != nil {
 			return err
 		}
 	}
@@ -335,7 +354,7 @@ func (s *Store) CreateTask(projectID int64, title string) (Task, error) {
 // ListTasksByProject returns the tasks belonging to one project, newest first
 // (R4.1).
 func (s *Store) ListTasksByProject(projectID int64) ([]Task, error) {
-	rows, err := s.db.Query(`SELECT id, project_id, title, COALESCE(description, ''), done, created_at FROM tasks WHERE project_id = ? ORDER BY id DESC`, projectID)
+	rows, err := s.db.Query(`SELECT id, project_id, title, COALESCE(description, ''), done, COALESCE(priority, ''), COALESCE(due_date, ''), created_at FROM tasks WHERE project_id = ? ORDER BY id DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -346,11 +365,16 @@ func (s *Store) ListTasksByProject(projectID int64) ([]Task, error) {
 		var (
 			t       Task
 			created string
+			dueStr  string
 		)
-		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Done, &created); err != nil {
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Done, &t.Priority, &dueStr, &created); err != nil {
 			return nil, err
 		}
 		t.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+		if dueStr != "" {
+			dt, _ := time.Parse("2006-01-02", dueStr)
+			t.DueDate = &dt
+		}
 		out = append(out, t)
 	}
 	return out, rows.Err()
@@ -361,9 +385,10 @@ func (s *Store) GetTask(id int64) (Task, error) {
 	var (
 		t       Task
 		created string
+		dueStr  sql.NullString
 	)
-	err := s.db.QueryRow(`SELECT id, project_id, title, COALESCE(description, ''), done, created_at FROM tasks WHERE id = ?`, id).
-		Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Done, &created)
+	err := s.db.QueryRow(`SELECT id, project_id, title, COALESCE(description, ''), done, COALESCE(priority, ''), COALESCE(due_date, ''), created_at FROM tasks WHERE id = ?`, id).
+		Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Done, &t.Priority, &dueStr, &created)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Task{}, errors.New("task not found")
@@ -371,12 +396,22 @@ func (s *Store) GetTask(id int64) (Task, error) {
 		return Task{}, err
 	}
 	t.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+	if dueStr.Valid && dueStr.String != "" {
+		dt, _ := time.Parse("2006-01-02", dueStr.String)
+		t.DueDate = &dt
+	}
 	return t, nil
 }
 
 // UpdateTaskDescription persists the task's description.
 func (s *Store) UpdateTaskDescription(id int64, description string) error {
 	_, err := s.db.Exec(`UPDATE tasks SET description = ? WHERE id = ?`, description, id)
+	return err
+}
+
+// SetTaskPriority sets the priority for a task.
+func (s *Store) SetTaskPriority(id int64, priority string) error {
+	_, err := s.db.Exec(`UPDATE tasks SET priority = ? WHERE id = ?`, priority, id)
 	return err
 }
 
@@ -390,6 +425,142 @@ func (s *Store) ToggleTask(id int64) error {
 func (s *Store) DeleteTask(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM tasks WHERE id = ?`, id)
 	return err
+}
+
+// GetTaskPriority returns the priority of a single task.
+func (s *Store) GetTaskPriority(id int64) (string, error) {
+	var priority sql.NullString
+	err := s.db.QueryRow(`SELECT COALESCE(priority, '') FROM tasks WHERE id = ?`, id).Scan(&priority)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", errors.New("task not found")
+		}
+		return "", err
+	}
+	return priority.String, nil
+}
+
+// UpdateTaskPriority sets the priority of a single task.
+func (s *Store) UpdateTaskPriority(id int64, priority string) error {
+	_, err := s.db.Exec(`UPDATE tasks SET priority = ? WHERE id = ?`, priority, id)
+	return err
+}
+
+// BulkUpdateTaskPriority updates priority for multiple tasks in a transaction,
+// silently skipping tasks that no longer exist. Returns count of updated tasks.
+func (s *Store) BulkUpdateTaskPriority(taskIDs []int64, priority string) (int, error) {
+	if len(taskIDs) == 0 {
+		return 0, nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(taskIDs)), ",")
+	args := make([]any, len(taskIDs))
+	for i, id := range taskIDs {
+		args[i] = id
+	}
+
+	result, err := tx.Exec(`UPDATE tasks SET priority = ? WHERE id IN (`+placeholders+`)`, append([]any{priority}, args...)...)
+	if err != nil {
+		return 0, err
+	}
+
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
+// BulkMarkDone sets done=true for multiple tasks in a transaction,
+// silently skipping tasks that no longer exist. Returns count of updated tasks.
+func (s *Store) BulkMarkDone(taskIDs []int64) (int, error) {
+	if len(taskIDs) == 0 {
+		return 0, nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(taskIDs)), ",")
+	args := make([]any, len(taskIDs))
+	for i, id := range taskIDs {
+		args[i] = id
+	}
+
+	result, err := tx.Exec(`UPDATE tasks SET done = 1 WHERE id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
+// BulkDeleteTasks deletes multiple tasks in a transaction,
+// silently skipping tasks that no longer exist. Returns count of deleted tasks.
+func (s *Store) BulkDeleteTasks(taskIDs []int64) (int, error) {
+	if len(taskIDs) == 0 {
+		return 0, nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(taskIDs)), ",")
+	args := make([]any, len(taskIDs))
+	for i, id := range taskIDs {
+		args[i] = id
+	}
+
+	result, err := tx.Exec(`DELETE FROM tasks WHERE id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int(count), nil
 }
 
 // UpdateTask updates a task's title and done status atomically (R3.3).
@@ -413,7 +584,7 @@ func (s *Store) UpdateTask(id int64, title string, done bool) (Task, error) {
 	}
 
 	// Fetch and return the updated task.
-	rows, err := s.db.Query(`SELECT id, project_id, title, COALESCE(description, ''), done, created_at FROM tasks WHERE id = ?`, id)
+	rows, err := s.db.Query(`SELECT id, project_id, title, COALESCE(description, ''), done, COALESCE(priority, ''), COALESCE(due_date, ''), created_at FROM tasks WHERE id = ?`, id)
 	if err != nil {
 		return Task{}, err
 	}
@@ -425,12 +596,63 @@ func (s *Store) UpdateTask(id int64, title string, done bool) (Task, error) {
 	var (
 		t       Task
 		created string
+		dueStr  string
 	)
-	if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Done, &created); err != nil {
+	if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Done, &t.Priority, &dueStr, &created); err != nil {
 		return Task{}, err
 	}
 	t.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+	if dueStr != "" {
+		dt, _ := time.Parse("2006-01-02", dueStr)
+		t.DueDate = &dt
+	}
 	return t, nil
+}
+
+// SetDueDate sets or clears the due date for a task.
+func (s *Store) SetDueDate(id int64, dueDate *time.Time) error {
+	var val any
+	if dueDate != nil {
+		val = dueDate.Format("2006-01-02")
+	}
+	_, err := s.db.Exec(`UPDATE tasks SET due_date = ? WHERE id = ?`, val, id)
+	return err
+}
+
+// ListTasksByDueDateRange returns tasks in a project with due dates within a range,
+// sorted by due_date ASC.
+func (s *Store) ListTasksByDueDateRange(projectID int64, after, before time.Time) ([]Task, error) {
+	afterStr := after.Format("2006-01-02")
+	beforeStr := before.Format("2006-01-02")
+	rows, err := s.db.Query(`
+		SELECT id, project_id, title, COALESCE(description, ''), done, COALESCE(priority, ''),
+		       COALESCE(due_date, ''), created_at
+		FROM tasks
+		WHERE project_id = ? AND due_date >= ? AND due_date <= ?
+		ORDER BY due_date ASC`, projectID, afterStr, beforeStr)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Task
+	for rows.Next() {
+		var (
+			t       Task
+			created string
+			dueStr  string
+		)
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Done, &t.Priority, &dueStr, &created); err != nil {
+			return nil, err
+		}
+		t.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+		if dueStr != "" {
+			dt, _ := time.Parse("2006-01-02", dueStr)
+			t.DueDate = &dt
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 // scanner is satisfied by both *sql.Row and *sql.Rows.
@@ -473,4 +695,104 @@ func uniqueProjectIDs(ids []int64) []int64 {
 		unique = append(unique, id)
 	}
 	return unique
+}
+
+// SearchTasksByKeyword returns tasks matching keyword in title, newest first.
+func (s *Store) SearchTasksByKeyword(projectID int64, keyword string) ([]Task, error) {
+	pattern := "%" + keyword + "%"
+	rows, err := s.db.Query(`SELECT id, project_id, title, COALESCE(description, ''), done, COALESCE(priority, ''), COALESCE(due_date, ''), created_at FROM tasks WHERE project_id = ? AND title LIKE ? ORDER BY id DESC`, projectID, pattern)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Task
+	for rows.Next() {
+		var (
+			t      Task
+			created string
+			dueDate string
+		)
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Description, &t.Done, &t.Priority, &dueDate, &created); err != nil {
+			return nil, err
+		}
+		t.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+		if dueDate != "" {
+			if du, err := time.Parse("2006-01-02", dueDate); err == nil {
+				t.DueDate = &du
+			}
+		}
+		if tags, err := s.GetTaskTags(t.ID); err == nil {
+			t.Tags = tags
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// GetTaskTags returns tag names for a task.
+func (s *Store) GetTaskTags(taskID int64) ([]string, error) {
+	rows, err := s.db.Query(`SELECT name FROM tags WHERE id IN (SELECT tag_id FROM task_tags WHERE task_id = ?) ORDER BY name`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tags []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		tags = append(tags, name)
+	}
+	return tags, rows.Err()
+}
+
+// AddTag creates a tag if not exists and links it to a task. Returns tag ID.
+func (s *Store) AddTag(taskID int64, tagName string) (int64, error) {
+	tagName = strings.TrimSpace(tagName)
+	if tagName == "" {
+		return 0, ErrEmptyName
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var tagID int64
+	err = tx.QueryRow(`SELECT id FROM tags WHERE name = ?`, tagName).Scan(&tagID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			res, err := tx.Exec(`INSERT INTO tags (name) VALUES (?)`, tagName)
+			if err != nil {
+				return 0, err
+			}
+			tagID, _ = res.LastInsertId()
+		} else {
+			return 0, err
+		}
+	}
+
+	_, err = tx.Exec(`INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)`, taskID, tagID)
+	if err != nil {
+		return 0, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return tagID, nil
+}
+
+// RemoveTag removes a tag from a task.
+func (s *Store) RemoveTag(taskID, tagID int64) error {
+	_, err := s.db.Exec(`DELETE FROM task_tags WHERE task_id = ? AND tag_id = ?`, taskID, tagID)
+	return err
 }
