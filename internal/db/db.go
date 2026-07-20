@@ -38,6 +38,7 @@ type Task struct {
 	Title       string
 	Description string
 	Done        bool
+	Priority    string // "low", "medium", "high", or ""
 	CreatedAt   time.Time
 }
 
@@ -104,6 +105,17 @@ func (s *Store) Migrate() error {
 	}
 	if !hasDescription {
 		if _, err := s.db.Exec(`ALTER TABLE tasks ADD COLUMN description TEXT`); err != nil {
+			return err
+		}
+	}
+
+	// Legacy databases predate priority; add the column when missing.
+	hasPriority, err := s.columnExists("tasks", "priority")
+	if err != nil {
+		return err
+	}
+	if !hasPriority {
+		if _, err := s.db.Exec(`ALTER TABLE tasks ADD COLUMN priority TEXT`); err != nil {
 			return err
 		}
 	}

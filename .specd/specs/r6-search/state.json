@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "slug": "r6-search",
-  "mode": "analyze",
-  "status": "pending",
-  "phase": "analyze",
+  "mode": "orchestrated",
+  "status": "executing",
+  "phase": "execute",
   "revision": 1,
   "records": {}
 }
