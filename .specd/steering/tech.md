@@ -21,3 +21,19 @@ priority: 20
 - <atomic writes / CAS / single static binary / …>
 - <the check that must always pass>
 <!-- specd:managed:steering/tech.md:v1 end -->
+
+## Aido project knowledge
+
+### Stack
+- **Language / runtime:** Not yet decided by the architecture document.
+- **Persistence:** Plain-text Markdown, YAML, and append-only logs stored under `.aido/` and tracked by Git, except secrets.
+- **Retrieval:** Direct document reads using explicit links, references, and section headings; no embeddings or vector database.
+- **Integration:** File-based coding-agent communication, with optional MCP or CLI bridges used only for factual repository exploration.
+- **LLMs:** Provider- and model-configurable routing by task; Aido owns prompts, instructions, synthesis, and specification generation.
+
+### Invariants
+- `.aido/config.yaml` is repository-safe and contains only secret-source references.
+- API keys resolve from environment variables first, then `.aido/.secrets.yaml`, optional OS keyring, and finally interactive input; `.aido/.secrets.yaml` must remain Git-ignored.
+- Request specifications use EARS requirements and retain their raw source, related-document links, open questions, and expected implementation/documentation notes.
+- Witness logs are append-only observations; missing documentation updates produce a non-blocking flag.
+- Coding-agent exploration returns facts such as file lists, matches, signatures, and history; Aido performs the reasoning.

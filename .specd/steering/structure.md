@@ -30,3 +30,22 @@ priority: 20
   `capabilities`, `context`, `evidence`, `checks`. The six required columns alone are a valid table; the rest may be omitted —
   the production planning profile requires the full set.
 <!-- specd:managed:steering/structure.md:v1 end -->
+
+## Aido project knowledge
+
+### Product-owned layout
+- **`.aido/config.yaml`** — repository-safe project, document, model-routing, agent, and synchronization configuration.
+- **`.aido/.secrets.yaml`** — Git-ignored fallback secrets.
+- **`.aido/requests/`** — normalized requests and human-reviewable EARS specifications named `{id}.md`.
+- **`.aido/links.yaml`** — explicit request-to-document and section mappings.
+- **`.aido/witness/`** — append-only, date-named observation logs.
+- **`.aido/templates/`** — specification templates, including the EARS format.
+- **`.aido/docs/`** — foundational project knowledge: architecture, domain model, glossary, API contracts, operations, and optional ADRs.
+- **`.aido/mcp-server/`** — optional bridge for supported coding agents.
+
+### Naming and document patterns
+- Request identifiers use `req-NNN`; request files use `.aido/requests/{id}.md`.
+- Document relationships include explicit relative paths and optional heading fragments, for example `docs/architecture.md#event-flow`.
+- Witness files use the UTC date as `{YYYY-MM-DD}.log`; entries begin with an ISO-8601 timestamp and an event type.
+- A healthy onboarded project contains `architecture.md`, `domain-model.md`, `glossary.md`, `api-contracts.md`, and `operations.md` under `.aido/docs/`.
+- Architecture decisions live under `.aido/docs/adr/`; focused deep dives may instead be sections in foundational documents.
