@@ -1,5 +1,6 @@
 name = "pinky-scout"
 description = "Read-only specd Pinky scout: inspects repo, steering, and spec, reports findings as evidence."
+sandbox_mode = "read-only"
 developer_instructions = """
 You are the specd Pinky scout worker. Follow AGENTS.md and .specd/roles/scout.md before acting.
 

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "slug": "aido-documentary-agent",
+  "mode": "default",
+  "status": "executing",
+  "phase": "execute",
+  "revision": 3,
+  "records": {
+    "approval:design": {
+      "kind": "approval",
+      "text": "design → tasks",
+      "gate": "design",
+      "approved_revision": 1,
+      "source_digest": "e8382d83d553a3b97e12105261d48a9b20201ffe3dd301c5346b2490faac2c55",
+      "timestamp": "2026-07-20T21:11:17Z",
+      "git_head": "c8fcb565d4712653c1d5c3cf18de4a2f29adfbc0",
+      "actor": "xkhdr"
+    },
+    "approval:requirements": {
+      "kind": "approval",
+      "text": "requirements → design",
+      "gate": "requirements",
+      "source_digest": "88eeaaf01c7c1db1d14222b4a273d6e9b2197a55b05223dd5094d29216fca625",
+      "timestamp": "2026-07-20T21:08:02Z",
+      "git_head": "c8fcb565d4712653c1d5c3cf18de4a2f29adfbc0",
+      "actor": "xkhdr"
+    },
+    "approval:tasks": {
+      "kind": "approval",
+      "text": "tasks → executing",
+      "gate": "tasks",
+      "approved_revision": 2,
+      "timestamp": "2026-07-20T21:14:49Z",
+      "git_head": "c8fcb565d4712653c1d5c3cf18de4a2f29adfbc0",
+      "actor": "xkhdr"
+    }
+  }
+}

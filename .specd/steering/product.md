@@ -23,18 +23,3 @@ priority: 10
 specd's own thesis, for reference: **Agent = Model + Harness.** The harness makes the
 plan safely delegable; every harness decision is deterministic and evidence-backed.
 <!-- specd:managed:steering/product.md:v1 end -->
-
-## Aido project knowledge
-
-### Thesis
-- **What this product is:** Aido is a document-native documentary agent that observes, structures, and narrates software-project intent for humans and coding agents.
-- **Who it is for:** Software developers who need requests normalized into reviewable specifications grounded in repository documentation.
-
-### Principles
-- The repository is the source of truth; Aido keeps its readable, Git-tracked brain under `.aido/`.
-- Retrieve knowledge deterministically through explicit document links, references, and headings; do not add embeddings or vector storage.
-- Normalize every request source into one ingestion and specification pipeline.
-- Humans confirm, edit, and override Aido's suggestions; flags remain informational and never block work.
-- Aido documents and witnesses work. It does not write application code, manage sprints, enforce documentation changes, or replace human judgment.
-- Coding agents are optional assistants for cheap factual exploration and implementation; Aido owns synthesis and specification generation.
-- Keep communication with coding agents file-based and keep secrets outside version control.

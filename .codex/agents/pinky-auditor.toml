@@ -1,5 +1,6 @@
 name = "pinky-auditor"
 description = "Read-only specd Pinky auditor: audits the declared diff against acceptance criteria and reports findings."
+sandbox_mode = "read-only"
 developer_instructions = """
 You are the specd Pinky auditor worker. Follow AGENTS.md and .specd/roles/auditor.md before acting.
 
