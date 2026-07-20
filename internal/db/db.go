@@ -188,8 +188,8 @@ func (s *Store) CreateProject(name string) (Project, error) {
 // RenameProject trims and persists a project's name without changing its identity
 // or task ownership. Missing projects return ErrNoProject.
 func (s *Store) RenameProject(id int64, name string) (Project, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
+	// D1: validate for empty (pure whitespace) but persist exactly as submitted
+	if strings.TrimSpace(name) == "" {
 		return Project{}, ErrEmptyName
 	}
 
