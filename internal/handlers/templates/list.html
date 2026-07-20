@@ -13,3 +13,10 @@
   <li class="empty-row"><span class="empty"><strong>No tasks yet</strong>Add your first task in the composer above.</span></li>
   {{ end }}
 </ul>
+<div class="quick-create-wrap">
+  <form class="quick-create-form" hx-post="/tasks/quick-create" hx-target="#task-list" hx-swap="outerHTML"
+        hx-on::after-request="if(event.detail.successful) quickCreateSuccess(this)">
+    <input type="text" name="title" placeholder="Quick add…" aria-label="Quick add task" autocomplete="off">
+    <button type="submit">Add</button>
+  </form>
+</div>

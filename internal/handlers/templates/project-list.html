@@ -8,6 +8,9 @@
       hx-post="/tasks/{{ .ID }}/toggle?project={{ $active }}" hx-target="#task-list" hx-swap="outerHTML"
       aria-label="Toggle done">
     <span>{{ .Title }}</span>
+    {{ if .Priority }}<span class="priority-badge {{ .Priority }}">{{ .Priority }}</span>{{ end }}
+    {{ if not .DueDate.IsZero }}<span class="due-date-badge {{ if .DueDate.Before (now) }}due-date-overdue{{ end }}">{{ if .DueDate.Before (now) }}Overdue{{ else }}Due: {{ .DueDate.Format "Mon Jan 2" }}{{ end }}</span>{{ end }}
+    <div class="task-tags-inline">{{ range .Tags }}<span class="tag-badge">{{ .Name }}</span>{{ end }}</div>
     <button class="del" hx-delete="/tasks/{{ .ID }}?project={{ $active }}" hx-target="#task-list" hx-swap="outerHTML"
       hx-confirm="Delete this task?" aria-label="Delete task">✕</button>
   </li>

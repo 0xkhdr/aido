@@ -1,5 +1,9 @@
 <aside id="sidebar">
   <h2>Projects</h2>
+  <div class="search-box-wrap">
+    <input type="text" id="search-box" placeholder="Search tasks..." aria-label="Search tasks">
+    <span id="search-result-count" class="search-result-count" style="display: none;"></span>
+  </div>
   <ul class="project-list">
     {{ $active := .Active.ID }}
     {{ range .Projects }}

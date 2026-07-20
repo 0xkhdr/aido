@@ -1,3 +1,66 @@
+// Search functionality with debounce
+function debounce(fn, delay) {
+  let timeout;
+  return function (...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+function getProjectId() {
+  return new URLSearchParams(window.location.search).get('project') ||
+         window.location.pathname.split('/').pop() || 1;
+}
+
+function handleSearch(query) {
+  const projectId = getProjectId();
+  const trimmedQuery = query.trim();
+
+  if (!trimmedQuery) {
+    // Clear search results
+    location.reload();
+    return;
+  }
+
+  fetch(`/api/projects/${projectId}/search?q=${encodeURIComponent(trimmedQuery)}`)
+    .then(r => r.json())
+    .then(data => {
+      const taskList = document.getElementById('task-list');
+      const resultInfo = document.getElementById('search-results-info');
+
+      if (data.tasks && data.tasks.length > 0) {
+        // Render search results
+        const taskHtml = data.tasks.map(task => `
+          <li class="${task.done ? 'done' : ''}">
+            <input type="checkbox" class="task-select" data-task-id="${task.id}"
+              aria-label="Select task for bulk operations">
+            <input type="checkbox" ${task.done ? 'checked' : ''}
+              hx-post="/tasks/${task.id}/toggle?project=${projectId}" hx-target="#task-list" hx-swap="outerHTML"
+              aria-label="Toggle done">
+            <span>${task.title}</span>
+            <button class="del" hx-delete="/tasks/${task.id}?project=${projectId}" hx-target="#task-list" hx-swap="outerHTML"
+              hx-confirm="Delete this task?" aria-label="Delete task">✕</button>
+          </li>
+        `).join('');
+
+        taskList.innerHTML = taskHtml;
+        resultInfo.innerHTML = `Showing ${data.tasks.length} result${data.tasks.length !== 1 ? 's' : ''} for "${trimmedQuery}"`;
+        resultInfo.style.display = 'block';
+      } else {
+        taskList.innerHTML = '<li class="empty-row"><span class="empty"><strong>No results</strong>Try a different search term.</span></li>';
+        resultInfo.innerHTML = `No results for "${trimmedQuery}"`;
+        resultInfo.style.display = 'block';
+      }
+
+      // Re-initialize bulk toolbar after rendering
+      initBulkToolbar();
+    })
+    .catch(err => {
+      console.error('Search failed:', err);
+      alert('Search failed: ' + err.message);
+    });
+}
+
 // Bulk operations task selection
 const selectedTasks = new Set();
 
@@ -82,5 +145,81 @@ function clearSelection() {
   updateToolbar();
 }
 
+function quickCreateSuccess(form) {
+  form.reset();
+  form.querySelector('input[name="title"]').focus();
+}
+
+// Tag management
+function addTag(taskId, tagName) {
+  if (!tagName.trim()) return;
+
+  fetch(`/tasks/${taskId}/tags/add`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: tagName })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      const tagList = document.getElementById('tag-list');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tag-badge';
+      btn.textContent = `${tagName} ✕`;
+      btn.dataset.tagId = data.tag_id;
+      btn.dataset.taskId = taskId;
+      btn.onclick = () => removeTag(taskId, data.tag_id, btn);
+      tagList.appendChild(btn);
+      document.getElementById('tag-input').value = '';
+    } else {
+      alert(`Error: ${data.error}`);
+    }
+  })
+  .catch(err => alert(`Failed to add tag: ${err}`));
+}
+
+function removeTag(taskId, tagId, btn) {
+  fetch(`/tasks/${taskId}/tags/${tagId}`, { method: 'DELETE' })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      btn.remove();
+    } else {
+      alert(`Error: ${data.error}`);
+    }
+  })
+  .catch(err => alert(`Failed to remove tag: ${err}`));
+}
+
+function initTags() {
+  const tagInput = document.getElementById('tag-input');
+  if (!tagInput) return;
+
+  const taskId = tagInput.dataset.taskId;
+
+  tagInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addTag(taskId, tagInput.value);
+    }
+  });
+
+  document.querySelectorAll('#tag-list .tag-badge').forEach(btn => {
+    btn.onclick = () => removeTag(taskId, btn.dataset.tagId, btn);
+  });
+}
+
 // Initialize on page load
-document.addEventListener('DOMContentLoaded', initBulkToolbar);
+document.addEventListener('DOMContentLoaded', () => {
+  initBulkToolbar();
+  initTags();
+
+  // Search box event listener with debounce
+  const searchBox = document.getElementById('search-box');
+  if (searchBox) {
+    searchBox.addEventListener('input', debounce((e) => {
+      handleSearch(e.target.value);
+    }, 300));
+  }
+});

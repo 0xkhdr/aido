@@ -121,12 +121,35 @@
         <span class="metadata-label">Created</span>
         <span class="metadata-value">{{ .CreatedAt.Format "Jan 2, 2006 at 15:04" }}</span>
       </div>
+      <div class="metadata-row">
+        <span class="metadata-label">Priority</span>
+        <select name="priority" hx-post="/tasks/{{ .ID }}/priority?project={{ $.Active.ID }}" hx-trigger="change">
+          <option value="high" {{ if eq .Priority "high" }}selected{{ end }}>High</option>
+          <option value="medium" {{ if eq .Priority "medium" }}selected{{ end }}>Medium</option>
+          <option value="low" {{ if eq .Priority "low" }}selected{{ end }}>Low</option>
+        </select>
+      </div>
+      <div class="metadata-row">
+        <span class="metadata-label">Due Date</span>
+        <form hx-post="/tasks/{{ .ID }}/due-date?project={{ $.Active.ID }}" hx-trigger="change" hx-target=".task-metadata" hx-swap="outerHTML" style="flex: 1; display: flex; justify-content: flex-end;">
+          <input type="date" name="due-date" {{ if not .DueDate.IsZero }}value="{{ .DueDate.Format "2006-01-02" }}"{{ end }} style="width: auto;">
+        </form>
+      </div>
     </div>
     <div class="task-description-section">
       <label class="task-description-label">Description</label>
       <form hx-put="/tasks/{{ .ID }}/description?project={{ $.Active.ID }}" hx-trigger="change delay:500ms" hx-target=".task-description-textarea">
         <textarea class="task-description-textarea" name="description" placeholder="Task description (multiline OK, max 10000 chars)" maxlength="10000">{{ .Description }}</textarea>
       </form>
+    </div>
+    <div class="task-tags-section">
+      <label class="task-tags-label">Tags</label>
+      <input type="text" id="tag-input" placeholder="Add tag..." data-task-id="{{ .ID }}">
+      <div class="tag-list" id="tag-list">
+        {{ range .Tags }}
+        <button type="button" class="tag-badge" data-tag-id="{{ .ID }}" data-task-id="{{ .ID }}">{{ .Name }} ✕</button>
+        {{ end }}
+      </div>
     </div>
     {{ end }}
   </div>
