@@ -7,7 +7,7 @@
 - interfaces: Go `package config` exports `Root` with pure path constructors, `DirName`, `Load`, `Config.Validate`, `Config.ResolveKey`, `WriteSecrets`, `SupportedProviders`, `ErrKeyNotFound`, `ErrUnsupportedKeySource`, `ErrNotGitIgnored`, `ValidationError`, and `WriteFile`; the CLI exposes `aido config show`. Consumed on-disk contracts are `.aido/config.yaml` and `.aido/.secrets.yaml` per blueprint §4.3–§4.4. See Interfaces.
 - invariants: I1 a resolved key never enters an error, log, or printed line; I2 no `.aido/` file is truncated in place, every write is temp-plus-rename; I3 path construction performs no I/O; I4 validation is total and reports every problem at once; I5 no network or LLM call in this package; I6 `cmd/aido` holds no validity decision. See Invariants.
 - failure: missing config yields a wrapped `fs.ErrNotExist`; malformed YAML yields a parse error naming file and position; malformed `.secrets.yaml` yields an error naming the path with contents never quoted; validation yields one aggregate error; an unresolvable key yields `ErrKeyNotFound` naming provider and sources consulted; a failed write removes its temp file and leaves the destination unchanged. See Failure.
-- integration: depends only on the Go standard library and `gopkg.in/yaml.v3` (`tech.md` T1), builds with `CGO_ENABLED=0`, and is depended on by every later aido-core package through `Root`; no gRPC, MCP, or Workspace reference (P9, T12); no prior on-disk state exists to migrate. The external boundaries are the filesystem under `.aido/`, the process environment, and the `aido` CLI's stdout/stderr/exit code. Integration evidence: task T6 is an integration task carrying evidence `test/integration-cli-config-show`, which drives `aido config show` end to end against a real temp `.aido/` tree and asserts the CLI contract; error-path negative checks at the same boundary are planned in T6 (missing config, invalid config, key never printed) and in T4 (write failure leaves destination and directory unchanged). See Integration and Verification.
+- integration: depends on the Go standard library, `gopkg.in/yaml.v3`, and `github.com/go-git/go-git` (all on the `tech.md` T1 allowlist), builds with `CGO_ENABLED=0`, and is depended on by every later aido-core package through `Root`; no gRPC, MCP, or Workspace reference (P9, T12); no prior on-disk state exists to migrate. The external boundaries are the filesystem under `.aido/`, the process environment, and the `aido` CLI's stdout/stderr/exit code. Integration evidence: task T6 is an integration task carrying evidence `test/integration-cli-config-show`, which drives `aido config show` end to end against a real temp `.aido/` tree and asserts the CLI contract; error-path negative checks at the same boundary are planned in T6 (missing config, invalid config, key never printed) and in T4 (write failure leaves destination and directory unchanged). See Integration and Verification.
 - alternatives: rejected a config library (T1/T2), eager key resolution at load (R6.3), `os.WriteFile` (T10), and path-based file-mode inference; deferred OS keyring and interactive prompt (dependency outside T1, so `reasoning.md` R3 makes it blocked rather than a default) and a shared provider-set constant with `internal/llm` (R4, R5). See Alternatives.
 
 ## Boundaries
@@ -146,8 +146,18 @@ one line per provider giving name, `base_url`, and `api_key_source` verbatim
 
 ## Integration
 
-- Depends on: Go stdlib and `gopkg.in/yaml.v3` only. No other module is added
-  (`tech.md` T1, T2). `CGO_ENABLED=0` holds; nothing imports cgo (R1.1, T3).
+- Depends on: Go stdlib, `gopkg.in/yaml.v3`, and `github.com/go-git/go-git` —
+  all on the `tech.md` T1 allowlist. go-git is used for R4.6's git-ignore check
+  only, and only its `plumbing/format/{gitignore,index}` packages plus
+  `go-billy/osfs`: its root package pulls `net/http` and `crypto/tls` into this
+  package's dependency graph, which invariant I5 forbids. Two build-time checks
+  hold that line — an import allowlist in `internal/config` and an assertion in
+  `cmd/aido` that `go list -deps ./internal/config` contains no `net`,
+  `net/http`, or `crypto/tls`. go-git declares `go 1.25.0`, which is why the
+  module floor moved (R1.1, `tech.md`).
+  *(Amended 2026-07-21 by operator ruling; this field previously read "Go stdlib
+  and gopkg.in/yaml.v3 only", which stopped being true at `aa3dd69` when the
+  `git` subprocess was replaced to satisfy `tech.md` T3. See `APPROVALS.md`.)* `CGO_ENABLED=0` holds; nothing imports cgo (R1.1, T3).
 - Depended on by: every later aido-core package. `Root` and its path
   constructors are the compatibility surface — later specs (`okf-bundle`,
   `query-links`) consume `Root` and must not construct `.aido/` paths themselves

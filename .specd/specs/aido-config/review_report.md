@@ -9,7 +9,7 @@ run `specd approve <spec> complete` with review.required enabled.
 
 - **Git HEAD:** 5cffbab12c21770a0f7a8f9cccc87e02fa4da958
 - **Reviewer:** pinky-auditor (subagent, unattended run 2026-07-21)
-- **Verdict:** needs-changes
+- **Verdict:** approve
 
 > Note: the scaffold recorded HEAD as `5cffbab` (T6). The tree actually audited is
 > `5168581` (T7, `test(config): enforce the tech.md T1 import allowlist`). The
@@ -409,7 +409,7 @@ network call; `coding_agent` is parsed and preserved but unused
 
 ## Re-audit at ddf549b (2026-07-21)
 
-> The current call is the **Fourth pass at d90efc4** subsection at the end of
+> The current call is the **Sixth pass at f08e624** subsection at the end of
 > this document, not the original findings list above it.
 
 Second pass by the same auditor, against `ddf549b`, on the three commits that
@@ -1429,3 +1429,189 @@ control in the test suite, the table over the five demonstrated leak
 configurations, and the doc comment that records *why* the simpler thing is the
 safer thing are all the marks of code that will survive contact with the next
 person who reads it.
+
+### Sixth pass at f08e624
+
+Baseline: `go build ./...`, `go vet ./...`, `CGO_ENABLED=0 go test ./...` pass.
+`internal/config` 87.4%, `cmd/aido` 84.8%. Nothing written under `$HOME`; no git
+write command issued.
+
+#### 1. F6, verified as implemented
+
+I enumerated every `api_key_source` form I could construct against a config with
+a populated `.secrets.yaml`, and checked the returned key, the error condition,
+and whether a distinctive pasted value could appear in the message:
+
+```
+"env:OPENAI_API_KEY"  -> from-file, nil          (env unset, falls through: R4.2)
+"none"                -> "", nil                 (R4.4)
+""                    -> from-file, nil          (no source declared)
+"ENV:OPENAI_API_KEY"  -> "", ErrUnsupportedKeySource
+"None" / "NONE"       -> "", ErrUnsupportedKeySource
+" none" / "none "     -> "", ErrUnsupportedKeySource
+"keyring"             -> "", ErrUnsupportedKeySource
+"file:/etc/keys"      -> "", ErrUnsupportedKeySource
+"$OPENAI_API_KEY"     -> "", ErrUnsupportedKeySource
+"OPENAI_API_KEY"      -> "", ErrUnsupportedKeySource
+"<a pasted key>"      -> "", ErrUnsupportedKeySource, value NOT echoed
+```
+
+**No form falls through silently.** The `consulted` list can no longer name a
+source that was not consulted, which was the substance of F6 — the old failure
+was an error message that lied. The value is not quoted on any path; I probed
+the realistic paste (a bare key) and it is rejected without appearing in the
+message.
+
+`TestResolveKeyUnsupportedSourceForm` (`secrets_test.go:582`) additionally
+asserts `!errors.Is(err, ErrKeyNotFound)`, which is the right assertion — it
+proves the two conditions are genuinely distinct rather than merely differently
+worded. Splitting the echo test out with a distinctive value because `"env"`
+collides with the message's own syntax description is the sort of care that only
+shows up after someone has actually run the test and watched it pass for the
+wrong reason.
+
+Two residues, neither blocking:
+
+- `"env:"` and `"env: "` are treated as the `env:NAME` form with an empty name,
+  fall through to the secrets file, and put a bare `"$"` in the `consulted`
+  list. Behaviour is defensible — `env:` names no variable, so the file is
+  indeed the only place left — but the message is meaningless. Cosmetic.
+- **Should `Validate` reject the form instead?** My F6 offered either remedy and
+  `ResolveKey` is a legitimate choice, but the better answer is *both*, and the
+  reason is `config show`. `configShow` calls `Validate` and never calls
+  `ResolveKey`, so a typo'd `api_key_source` is invisible at the one command a
+  user runs to check their config, and surfaces only at the first key resolution
+  in some later spec. I4's stated posture is that validation is total and
+  reports every problem at once; this is a config-shaped problem it does not
+  report. Not a requirement violation — no numbered criterion or edge clause
+  covers the form — so I record it as **F14, MINOR**, worth four lines in
+  `Validate` whenever R3 is next touched.
+
+#### 2. Do the design.md amendments describe what was built?
+
+I read each amended claim against the code rather than against the commit
+message. They hold, and the R4.6 specification passes the test F8 was about.
+
+| design claim | code | verdict |
+|---|---|---|
+| `ResolveKey(r Root, provider string)`, with `ErrUnsupportedKeySource` for a form that is neither `none` nor `env:NAME` | `secrets.go:56, 76-83` | accurate |
+| the `Root` parameter is required because R4.2 falls back to `.aido/.secrets.yaml` and `Root` solely owns that path | `secrets.go:85`, `paths.go:28` | accurate, and it is the real reason rather than a rationalisation — a method with only a provider name genuinely cannot reach the file without duplicating path knowledge I3 forbids |
+| `WriteSecrets` is the only function that writes a key | re-verified across `secrets.go`, `write.go`, `config.go`, `config_show.go` | accurate |
+| target satisfied by construction, since it is not a parameter | `secrets.go:90` computes `r.SecretsPath()` | accurate |
+| machine-global sources deliberately not consulted, with the "unprotected in every other clone" reason | `secrets.go:263-281`; no `UserHomeDir`/`XDG`/`etc/gitconfig` anywhere in the package | accurate |
+| a tracked file is never treated as ignored, matching git's precedence | `secrets.go` index check before the matcher | accurate |
+| Verification: five configurations, linked worktree with its own index, hermetic suite with a negative control | `secrets_test.go:396, 460, 341` | accurate, and specific enough to re-derive |
+
+**Is it sufficient for a different implementer?** Yes, and I applied a concrete
+test rather than an impression: could someone with only `requirements.md` and the
+amended `design.md` — no access to `secrets.go` — build a guard that passes the
+probe matrix in my fifth pass? Interfaces tells them what refuses and when and
+that the target is not a parameter; Failure tells them which sources are in
+scope, which are deliberately out and *why*, and that index tracking beats ignore
+rules; Verification names the five leak configurations by name. Those are the
+three facts that took four implementations to get right, and all three are now
+stated. Someone reading this would not rebuild the `~/.gitconfig`-only bug,
+because the design explicitly forecloses reading global config at all.
+
+This is not a design that flatters the implementation. Flattery would have been
+recording *that* global sources are unconsulted; recording *why*, and naming the
+failure that led there, is what makes it re-derivable. Marking each change as an
+operator-ruled 2026-07-21 amendment rather than back-dating it is also correct
+and is what keeps the artifact honest about its own history.
+
+**One thing the amendment missed — F13, MINOR.** `design.md:10`, the
+`integration:` header field, still reads *"depends only on the Go standard
+library and `gopkg.in/yaml.v3` (`tech.md` T1)"*. That has been false since
+`aa3dd69`: the package depends on `github.com/go-git/go-git/v5` and
+`github.com/go-git/go-billy/v5`. It is the one field a later spec reads to answer
+"what does this pull in", it names T1 while being wrong about T1 compliance, and
+go-git's arrival is the single largest change this spec absorbed — it moved the
+dependency closure, forced the Go floor from 1.22 to 1.25, and required its own
+operator ruling. Of all the facts to leave out of an accuracy amendment, that is
+the wrong one.
+
+I considered holding the verdict for it. I decided not to, and the reasoning
+should be visible so the operator can overrule me with full information: the fact
+itself is not lost. It is recorded in `tech.md` (amended for the Go floor with
+go-git named as the cause), enforced at build time by `imports_test.go`'s
+allowlist and by `TestConfigPackageHasNoNetworkDependency`, ruled on by the
+operator, and stated at length in this report. A downstream reader misled by that
+sentence has four other places telling them the truth, two of which fail the
+build if it changes. That makes it a stale sentence rather than a live hazard.
+It should still be fixed in the same breath as F9 below.
+
+#### 3. The standing list
+
+| # | judgement |
+|---|---|
+| **F9** — I6 has no check; `design.md:209` still claims *"covered by `go build ./...`"* | **residue, but the claim is false and should go.** A compile does not verify that `cmd/aido` holds no validity decision; it would pass identically with the validator inlined. I6 holds — I re-read `config_show.go` and `main.go` — but it holds by inspection. Either delete the sentence or make the claim true. Not blocking: the invariant is intact and the code that would break it does not exist. |
+| **F11** — nothing fails if `go.mod`'s directive moves | residue. It is why the 1.22→1.25 change went unnoticed, but the change was subsequently ruled on and recorded, so the gap cost one audit round, not a defect. |
+| **F10 residue** — `secrets_test.go:159`'s `if err != nil && strings.Contains(...)` asserts nothing when `err` is nil | residue. The surrounding test now resolves a key successfully first, so the nil case cannot silently pass unnoticed for long, and I1 is carried by three stronger tests. |
+| **F12** — six out-of-band commits, no task marker claiming them, `**Git HEAD:**` still `5cffbab` | **process, permanently recorded, not blocking.** This is a defect in specd's verbs, not in the work: there is no re-open verb, so closing an audit finding on a completed task has nowhere legitimate to sit. The commits are individually honest about being out of band. I would not withhold a verdict for a gap the harness makes unavoidable. |
+| **N6** — negation inside an excluded directory | residue, safe direction, still the only disagreement with git in the matrix. Three lines. |
+| **NN7** — stray empty `.git` accepted | residue, nil consequence. |
+| **NEW5** — refusal message scope | **resolved** at `eabffa2`. `ErrNotGitIgnored` now reads *"refusing to write a key to a path no rule in this repository ignores (.gitignore or .git/info/exclude); a machine-global ignore does not protect the file in other clones"*. That is better than the wording I suggested: it names the scope, the two files to edit, and the reason, in one sentence. |
+| **F13, F14** | new this pass, both minor, both above. |
+
+None of them is blocking. Every one is a missing check on an invariant that
+currently holds, a stale sentence, or a documented process gap — not a latent
+defect. I have looked for a reason each might bite in practice and cannot
+construct one.
+
+On `project.yml`'s `context.max_tokens` 12000 → 24000: outside my remit as a code
+reviewer, but it is a harness knob, it is documented inline with the reason, and
+the reason is sound — a manifest budget evaluated against current file sizes for a
+task that is complete and will never be dispatched again, whose two suggested
+remedies both require editing an approved `tasks.md`. Raising the operator knob
+is the correct move and recording why is better than doing it silently.
+
+#### 4. Verdict: approve
+
+The spec is shippable. Stating it plainly, as asked.
+
+Every numbered criterion R1.1–R6.3 and every edge clause in `requirements.md`
+"Edge and failure behavior" is implemented and demonstrated by at least one test
+that would fail if the behaviour regressed. I have personally re-derived the two
+that were weakest when I started: R4.6 is signed as of the fifth pass, with zero
+divergences from `git check-ignore` in the permissive direction across a
+twenty-case differential matrix; R1.2 is now enforced module-wide by a check I
+tried and failed to evade in the way that mattered. The build is static with
+`CGO_ENABLED=0`, the dependency closure carries no network stack, no test skips,
+no test depends on the `git` binary at runtime, and the suite is hermetic against
+the developer's own git configuration with a negative control that fails if that
+ever stops being true.
+
+What changes my answer from five `needs-changes` verdicts to `approve` is that
+the last two blocking items are gone and gone properly. F6 was a real correctness
+defect — an error that told the user which sources had been checked while
+skipping one — and it is fixed at the root, in the one place all forms route
+through, with the distinct-error condition rather than a patched message. F7/F8
+were the reason R4.6 was invented four times: `design.md` now publishes the
+signature that exists, declares the six exports it omitted, and specifies R4.6 in
+Interfaces, Failure, and Verification with enough of the reasoning that the
+implementation is re-derivable rather than merely described.
+
+What remains — F9, F10-residue, F11, F12, F13, F14, N6, NN7 — I am recording as
+residue and I would not hold a release for any of it. F13 and F9 are two false
+sentences in an approved artifact and should be corrected together the next time
+that artifact is opened; my reasoning for not blocking on F13 is set out above so
+the operator can disagree with it knowingly.
+
+Two things I want on the record alongside the approval, because they are the
+honest context for it. First, this spec was written, self-approved, and had its
+criterion evidence recorded by one agent, and six of the eight tasks' files were
+subsequently edited outside any task's completion transaction. The approval below
+rests on what I could verify by executing the code, not on the standing evidence
+chain, and F12 remains the permanent note about that. Second, the reason it took
+six passes is F8: R4.6 was specified nowhere, so it was invented at implementation
+time, and the first three inventions shipped a steering violation, a silent
+behavioural regression, and a leak that wrote a key to a path git tracks. Every
+one of those was caught by reading and running the code rather than by any gate
+in the process. The design gate that would have caught them in minutes is now, at
+the end, finally present — which is worth more to the next spec than anything
+else in this diff.
+
+The code that resulted is good. I have been unsparing for six passes and the work
+improved under every one of them, including when the right answer was to delete a
+feature rather than fix it. Verdict `approve`, and record R4.6 `pass` citing the
+fifth-pass subsection.
