@@ -208,3 +208,51 @@ _Entries appended below as the run proceeds._
   cost more than it buys — but you set the delegation scope, and "approve only
   on a clean check" turned out not to protect against a gate that simply does
   not check the thing a reader would assume it checks.
+
+### aido-config · verifying → complete — **NOT APPROVED**
+
+- **Command:** `specd check aido-config` → exit 0, no output.
+  `specd approve aido-config` → **not run.**
+- **Why not:** the independent audit (T8, `pinky-auditor` subagent, verdict
+  `needs-changes`) found a BLOCKER, and four acceptance criteria now carry
+  failing records. Your rule for this run was "approve ONLY on a clean check…
+  If check reports any error finding, do not approve — fix the artifact and
+  re-check." `specd check` was clean, but clean `check` has been demonstrated
+  three times in this run to mean nothing (see `SPECD-FEEDBACK.md`), so the
+  audit and the readiness gate were treated as the real signal. Both say no.
+- **The harness agrees.** `specd status aido-config --guide`:
+  ```
+  blocker: criteria.required: 4 acceptance criterion/criteria lack a current passing record: 1.2, 4.3, 4.6, 5.3
+  blocker: review.required: verdict is "needs-changes", completion refused
+  ```
+  `specd complete-task aido-config T8` is refused for the same reason. This is
+  the one gate in the run that held exactly as advertised.
+- **The blocker:** `internal/config/secrets.go:107` runs
+  `exec.Command("git", "check-ignore", …)`. `.specd/steering/tech.md` T3 refuses
+  "a runtime that requires the `git` binary on PATH", and `go-git` was on the
+  allowlist and unused. I wrote that code, and I wrote the T7 test meant to
+  enforce T3, and that test encoded only the cgo half of the rule.
+- **Why I did not fix it:** every fix lands in a file owned by a completed task
+  (`secrets.go` → T5, `validate.go` → T3, `write_test.go` → T4). Scope
+  enforcement refuses those edits, and the verbs that would amend the plan —
+  `midreq`, `decision` — are human-only and were **not** in the authority you
+  delegated. You delegated `approve` and `mode`. So the run stops here rather
+  than widening its own mandate.
+- **Program consequence:** `okf-bundle` and `query-links` were not started.
+  `PROGRAM.md` links them `follows aido-config`, and a spec cannot enter
+  executing while a spec it follows is incomplete. That constraint is doing its
+  job — the two later specs would have been built on a package that violates
+  steering.
+- **Would have asked you, and this is the one I actually need an answer to:**
+  four things, in order.
+  1. Do you want `secrets.go` moved to `go-git`, or R4.6's git-ignore check
+     dropped from this spec and re-specced? Both are plan changes only you can
+     authorise.
+  2. Do you want the `executing → verifying` approval (taken while T7 and T8
+     were pending) left standing? There is no un-approve verb.
+  3. `requirements.md` "Edge and failure behavior" requires a validation error
+     for a provider with neither `api_key_source` nor `base_url`. It is not
+     implemented, and `validate_test.go:106` actively asserts the opposite. That
+     needs a ruling: implement, or strike from requirements.
+  4. `PROGRAM.md` itself was drafted by me and audited by nobody. Before any of
+     this continues, someone should read it who did not write it.

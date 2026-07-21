@@ -1081,3 +1081,94 @@ stated plainly and stays a proposal — never a self-applied change.
 - **Status:** open — **the run's most valuable finding**, since the operator's
   standing instruction was to surface exactly this: a gate letting through what
   a human would have rejected.
+
+### 2026-07-21 — friction — a steering prohibition was violated in code while the test written to enforce that same rule encoded only half of it
+
+- **Context:** spec `aido-config`, T5 (`internal/config/secrets.go`) and T7
+  (`internal/config/imports_test.go`). Found by the independent auditor in T8,
+  not by any gate.
+- **What happened:** `secrets.go:107` runs
+  `exec.Command("git", "check-ignore", "-q", "--", path)` to satisfy R4.6.
+  `.specd/steering/tech.md` T3 reads verbatim: *"No cgo, no shelling out to
+  `git`. Git operations go through go-git. A build that requires a C toolchain,
+  or a runtime that requires the `git` binary on PATH, is refused."*
+  `github.com/go-git/go-git` is on the T1 allowlist and was not used. No ADR.
+- **Every gate passed it.** `specd check` exit 0. `specd verify` green. The task
+  completed. `complete-task`'s scope gate passed — the file was declared. And
+  T7, whose entire purpose was to encode the T1/T3 import rules as a test,
+  enforced the module allowlist and the cgo half of T3 and silently omitted the
+  shelling-out half — because `os/exec` is standard library, and the test's
+  model of "allowed" is "stdlib or allowlisted module".
+- **Why this is the sharpest finding of the run:** the same agent wrote the
+  violation, then wrote the test that was supposed to catch it, then approved
+  every artifact. Nothing in the harness connects a steering *prohibition* to a
+  check. Steering is loaded into context as prose and is enforced only by
+  whatever the agent chooses to encode.
+- **Root cause:** harness gap. Steering rules are advisory to the model and
+  invisible to the gates.
+- **Recommendation:** (a) let steering declare machine-checkable prohibitions —
+  a `forbidden:` block with symbol/import/call patterns (`exec.Command("git"`,
+  `import "C"`, `net/http`) that a gate greps the diff for, so a named
+  prohibition fails the build rather than depending on an agent remembering it;
+  (b) at minimum, have `specd check` list which steering rules have *no*
+  corresponding check, so the unenforced ones are visible; (c) never let the
+  author of a rule-encoding test also be the author of the code it constrains,
+  which the role separation already intends but the single-agent fallback
+  defeats.
+- **Status:** open — this one is worth more than the rest of this file combined.
+
+### 2026-07-21 — friction — `EVIDENCE_MISSING` says evidence is absent when it exists and is failing
+
+- **Context:** spec `aido-config`, T8. The auditor's review evidence was imported
+  correctly with `verdict: fail` (the audit's verdict was `needs-changes`):
+  ```
+  $ specd eval import aido-config audit-evidence.jsonl --task T8 --check aido-config-audit
+  imported eval evidence for aido-config
+  ```
+  Completion is then refused — correctly — but with the wrong reason:
+  ```
+  EVIDENCE_MISSING: task T8 lacks passing evidence for review/aido-config-audit;
+  … import external evidence with `specd eval import <slug> <file> --task T8 --check aido-config-audit`,
+  or remove the declaration from the task's evidence cell
+  ```
+  The evidence is not missing. It is present, valid, and says *fail*. The
+  recommended recovery — import it — was just done, and the alternative
+  recovery offered is to **delete the declaration**, i.e. to drop the audit
+  requirement rather than address the audit.
+- **Why it matters:** an unattended driver reading that message would re-import
+  in a loop, and the only escape the message names is the one that erases the
+  failing check. That is a bypass, printed as advice, in the refusal that exists
+  to prevent bypasses.
+- **Recommendation:** distinguish the two states —
+  `EVIDENCE_FAILING: review/aido-config-audit verdict is "fail" (imported
+  2026-07-21T18:11:07Z, artifact .specd/specs/aido-config/review_report.md);
+  address the findings and import a fresh record` — and never suggest removing a
+  declared evidence class as a recovery.
+- **Smaller, same command:** a malformed adapter file reports
+  `usage: EVAL_IMPORT_MALFORMED: invalid character '#' looking for beginning of value`
+  — the word `usage:` with no usage line after it, and no statement anywhere
+  that the file must be JSONL of `EvidenceEnvelopeV1`. The schema had to be read
+  out of specd's own source.
+- **Status:** open
+
+### 2026-07-21 — friction — `specd check` stays silent and exit 0 while the spec is unshippable
+
+- **Context:** spec `aido-config`, verify phase, at the end of the run.
+- **Actual:** `specd check aido-config` → exit 0, no output. At that exact
+  moment: 4 of 25 acceptance criteria carried failing records (1.2, 4.3, 4.6,
+  5.3), T8 was incomplete, and the review verdict was `needs-changes` over a
+  BLOCKER-severity steering violation. `specd status --guide` reported all of it
+  precisely and usefully.
+- **Why it matters here specifically:** the operator's rule for this unattended
+  run was *"run `specd check` first, and approve ONLY on a clean check."* That
+  rule is unsound against this behaviour — `check` was clean at every single
+  approval in this run, including the one that advanced a spec with two tasks
+  still pending. A driver that trusts `check` as its go/no-go signal will
+  approve broken work every time.
+- **Recommendation:** make `specd check` report what `--guide` already computes:
+  blockers, failing criteria, incomplete tasks, review verdict. Exit non-zero
+  when any blocker exists. If `check` is deliberately narrower than the approve
+  gate, say so in its own output — "0 gate findings; this does not check
+  readiness, see `specd status --guide`" — because silence reads as
+  endorsement, and in this run it was treated as one.
+- **Status:** open
