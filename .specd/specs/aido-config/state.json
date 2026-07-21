@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "slug": "aido-config",
+  "mode": "orchestrated",
+  "status": "executing",
+  "phase": "execute",
+  "revision": 4,
+  "records": {
+    "approval:design": {
+      "kind": "approval",
+      "text": "design → tasks",
+      "gate": "design",
+      "approved_revision": 1,
+      "source_digest": "ffc5df40be0f076a222686880b07ac39811d06f4cdfb2b5dfc63ac9e7e9c4922",
+      "timestamp": "2026-07-21T16:34:31Z",
+      "git_head": "5628a7786ded0a9e9178b7d990c5762fc17d0861",
+      "actor": "xkhdr"
+    },
+    "approval:orchestrated": {
+      "kind": "approval",
+      "gate": "orchestrated",
+      "approved_revision": 3,
+      "timestamp": "2026-07-21T16:44:53Z",
+      "git_head": "5628a7786ded0a9e9178b7d990c5762fc17d0861",
+      "actor": "xkhdr"
+    },
+    "approval:requirements": {
+      "kind": "approval",
+      "text": "requirements → design",
+      "gate": "requirements",
+      "source_digest": "13eb265e946e2e55da98963babb63c5acafb5c4e4fdac35d88cab0478ea0030d",
+      "timestamp": "2026-07-21T16:32:07Z",
+      "git_head": "5628a7786ded0a9e9178b7d990c5762fc17d0861",
+      "actor": "xkhdr"
+    },
+    "approval:tasks": {
+      "kind": "approval",
+      "text": "tasks → executing",
+      "gate": "tasks",
+      "approved_revision": 2,
+      "timestamp": "2026-07-21T16:44:24Z",
+      "git_head": "5628a7786ded0a9e9178b7d990c5762fc17d0861",
+      "actor": "xkhdr"
+    }
+  }
+}
