@@ -256,3 +256,56 @@ _Entries appended below as the run proceeds._
      needs a ruling: implement, or strike from requirements.
   4. `PROGRAM.md` itself was drafted by me and audited by nobody. Before any of
      this continues, someone should read it who did not write it.
+
+### aido-config · T5 go-git fix — **no re-open verb exists**
+
+- **Instruction:** "switch secrets.go to go-git and re-open T5."
+- **Done:** `internal/config/secrets.go` now resolves the repository through
+  go-git (`git.PlainOpenWithOptions`) and matches patterns through
+  `plumbing/format/gitignore`. It keeps git's own precedence — a *tracked*
+  `.secrets.yaml` is never reported ignored, which is the fail-safe the audit
+  singled out — and the tests no longer skip, because the fixture repository is
+  built with `git.PlainInit` rather than a subprocess. Commit `aa3dd69`. Build,
+  vet, and the full suite pass; criteria 4.3 and 4.6 now carry passing records
+  (23/25).
+- **Not done, because it is not expressible:** there is no verb that re-opens a
+  completed task. `specd task --override` only clears an escalated task's
+  verify-failure ratchet and explicitly "does not complete it"; `midreq` and
+  `decision` record text and change no state; `brain run` will not re-dispatch a
+  task the frontier considers done. `specd verify aido-config T5` still records
+  real evidence — it did, at HEAD — but `complete-task` refuses:
+  ```
+  OUTSIDE_SCOPE: task T5 changed files outside its declared scope:
+    go.mod is not declared by task T5 (modified)
+    cmd/aido/main.go is not declared by task T5 (created)
+    …
+  ```
+  because T5's baseline is still its original mission's `subject_head`, six
+  commits back.
+- **The fix does not fit in T5 anyway.** It spans `go.mod` and `go.sum` (T1's
+  files) and `internal/config/imports_test.go` (T7's), both completed tasks.
+  Re-opening T5 alone would not have been enough; the file scope needed widening
+  too, which is a `tasks.md` amendment — an approved artifact behind a human
+  gate.
+- **So the change sits outside any task's completion transaction.** It is
+  committed, tested, and recorded in the criterion ledger, but no task marker
+  claims it and `specd drift` reports `none | unknown | none`. That is the
+  honest state, and it is a gap in the harness rather than something I worked
+  around.
+- **One consequence you should know about:** go-git v5.19.1 declares
+  `go 1.25.0`, so the toolchain rewrote our `go.mod` directive from `go 1.22` to
+  `go 1.25.0`. R1.1 says "Go 1.22 or newer", so it still holds, but the module's
+  floor moved and I could not hold it at 1.22.
+- **Still blocking completion, untouched by this fix:**
+  ```
+  blocker: criteria.required: 2 acceptance criterion/criteria lack a current passing record: 1.2, 5.3
+  blocker: review.required: verdict is "needs-changes", completion refused
+  ```
+  1.2 is audit F5 (`cmd/aido/config_show_test.go` rebuilds `.aido/` paths by
+  `filepath.Join` instead of the constructors) and 5.3 is F3 (the pre-rename
+  cleanup in `write.go` is dead under test). Both live in completed tasks' files
+  — T6 and T4 — so both have the same problem this entry describes.
+- **Would have asked you:** the review verdict still reads `needs-changes` and
+  its report is pinned to `5168581`, which is no longer HEAD. Do you want the
+  auditor re-run against `aa3dd69` once F2/F3/F5 are addressed, or a fresh audit
+  now covering only the delta?

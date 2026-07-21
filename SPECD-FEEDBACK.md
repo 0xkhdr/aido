@@ -1172,3 +1172,44 @@ stated plainly and stays a proposal — never a self-applied change.
   readiness, see `specd status --guide`" — because silence reads as
   endorsement, and in this run it was treated as one.
 - **Status:** open
+
+### 2026-07-21 — friction — no verb re-opens a completed task, so a post-completion fix lands outside the harness entirely
+
+- **Context:** spec `aido-config`. The operator ruled that audit finding F1 (a
+  `tech.md` T3 violation in T5's `internal/config/secrets.go`) be fixed by
+  switching to go-git, and asked for T5 to be re-opened.
+- **Expected:** a verb that returns a completed task to `pending` so the fix can
+  be made, verified, and completed inside the same transaction that closed it
+  the first time.
+- **Actual:** none exists. Checked all of them:
+  - `specd task <id> --override` — "Clear an escalated task (resets the
+    verify-failure ratchet; **does not complete it**)". Only applies to an
+    *escalated* task; T5 is `complete`, not escalated.
+  - `specd midreq` / `specd decision` — record text; change no task state.
+  - `specd brain run` — will not re-dispatch a task the frontier considers done.
+  - `specd verify <slug> T5` — still runs and records real evidence against a
+    complete task, and prints `task not complete; run specd complete-task` for a
+    task that *is* complete. `complete-task` then refuses with `OUTSIDE_SCOPE`
+    measured from the original mission's `subject_head`, six commits back.
+- **Result:** the fix is committed (`aa3dd69`), tested, and recorded in the
+  criterion ledger, but no task marker claims it. `specd drift aido-config`
+  reports `none | unknown | none` — it does not notice that a completed task's
+  declared files changed after completion, which is precisely the situation it
+  reads as if it were built for.
+- **Second-order problem:** the fix could not have fitted in T5 even with a
+  re-open. It spans `go.mod`/`go.sum` (T1) and `imports_test.go` (T7). Any real
+  remediation crosses task boundaries, because the thing being remediated is a
+  *cross-cutting* rule violation. Per-task file scoping models greenfield
+  authorship and has no model of repair.
+- **Recommendation:** (a) add `specd task <slug> <id> --reopen --reason <text>`
+  (human-only, like `approve`) that returns a completed task to `pending`,
+  records the reason in `state.json`, and mints a fresh baseline on next
+  dispatch; (b) let it take `--files` to widen the declared scope in the same
+  transaction, since a repair rarely fits the original cell — that is the
+  `tasks.md` amendment nobody can currently make; (c) make `specd drift` flag a
+  completed task whose declared files changed after its completion evidence,
+  which would have surfaced this without anyone thinking to look; (d) stop
+  `specd verify` from telling a completed task to complete itself.
+- **Status:** open — this is the gap between "specd builds software" and "specd
+  maintains software". Every audit finding in this run landed in a file owned by
+  a task that had already closed.
