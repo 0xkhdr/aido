@@ -1315,3 +1315,36 @@ stated plainly and stays a proposal — never a self-applied change.
   trusted to honour. Until then, `specd agents doctor` should say plainly that
   role scoping is advisory.
 - **Status:** open — mitigated locally, unmitigated in the model.
+
+### 2026-07-21 — friction — the context-budget gate fires on a completed task and its only remedy is unreachable
+
+- **Context:** spec `aido-config`, verify phase. After the R4.6 rewrite grew
+  `internal/config/secrets.go` and `secrets_test.go`, a blocker appeared that
+  had never fired during execution:
+  ```
+  blocker: T5: required context 15027 tokens exceeds budget 12000 — decompose the task or narrow declared files
+  ```
+- **T5 is complete.** It closed hours earlier, at a point when its declared files
+  were small enough. Growing them — which is what fixing the audit findings
+  required — retroactively made a completed task un-manifestable.
+- **Both remedies are unreachable.** "Decompose the task" and "narrow declared
+  files" are edits to `tasks.md`, an approved artifact behind a human gate and a
+  `harnessProtected` basename that `CheckDiffScope` refuses. There is no verb to
+  re-open T5 (logged separately), so there is no legal path from this blocker to
+  a clear one. The message names two actions, neither of which the actor it is
+  addressed to can perform.
+- **Root cause:** harness gap. The budget is checked at manifest time against
+  current file sizes, with no notion that the task it describes is finished and
+  its manifest will never be built again.
+- **Recommendation:** (a) skip the context-budget gate for tasks in a terminal
+  state — the manifest exists to bound what a worker reads before it works, and
+  there is no worker; (b) if the check is meant to catch "this task's files have
+  outgrown their design", say *that* instead, and name the human verb that
+  resolves it; (c) raise `context.max_tokens` is the obvious operator escape and
+  is not mentioned anywhere in the blocker, though `project.yml` documents the
+  knob.
+- **Note on the shape of this run:** this is the fourth distinct blocker whose
+  stated remedy is an edit to an approved artifact. `OUTSIDE_SCOPE`, the design
+  signature deviation, the unimplemented requirements edge case, and now this.
+  specd models authoring well and repair barely at all.
+- **Status:** open

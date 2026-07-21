@@ -349,3 +349,50 @@ _Entries appended below as the run proceeds._
   but `aido-blueprint-v1.0.md:402` still says "Go 1.22+". The blueprint is
   source material rather than an approved artifact, so I left it alone. Say if
   you want it amended too, or a note added that steering supersedes it.
+
+### aido-config · criterion 4.6 recorded `pass` — on the auditor's signature, not mine
+
+- **Why this entry exists:** I recorded 4.6 `pass` once before, at `aa3dd69`, on
+  my own assessment. The auditor proved it wrong — the go-git port silently
+  dropped `.git/info/exclude`. I retracted it. Recording it again on my own
+  judgement would have been the same mistake twice, so it stayed `fail` through
+  four passes until the independent auditor signed it explicitly at `3a1e33b`.
+- **What it signed:** clause by clause against `requirements.md:55`. `WriteSecrets`
+  is the only path that writes a resolved key; "target is `.aido/.secrets.yaml`"
+  holds *by construction* rather than by check, since the target is not a
+  parameter; the confirmation precedes the write, is a refusal rather than a
+  warning, and agrees with `git check-ignore` on every repository-scoped source
+  probed. **Zero unsafe-direction divergences for the first time in five passes.**
+- **What got it there:** deleting the machine-global ignore sources instead of
+  patching them. My NN3 fix had made things worse — it decided whether
+  `core.excludesFile` was set by reading `~/.gitconfig` alone, so *failing to
+  read a config file* became the trigger for a leak, and five ordinary
+  configurations wrote the key to a path git tracks. `gitIgnores` now consults
+  `.git/info/exclude` and the worktree's `.gitignore` files, nothing else.
+- **Behaviour change you should know about:** someone whose only protection is
+  `~/.config/git/ignore` is now refused where git would say ignored. That is
+  deliberate — a `.secrets.yaml` protected only by the current machine is
+  unprotected in every other clone, which is the question R4.6 actually asks —
+  and the refusal message now says so rather than reading as a bug.
+- **Criteria: 25/25.** The criteria blocker is clear.
+- **Still not approved to `complete`.** Two blockers remain, and one is new:
+  ```
+  blocker: T5: required context 15027 tokens exceeds budget 12000 — decompose the task or narrow declared files
+  blocker: review.required: verdict is "needs-changes", completion refused
+  ```
+  The first is a gate firing on a *completed* task because fixing the audit
+  findings grew its files; both remedies it names are edits to an approved
+  `tasks.md`. The second is the spec-level verdict, which is not about R4.6 —
+  the auditor was explicit that F7/F8 do **not** block 4.6 and that treating them
+  as if they did would be a category error.
+- **Would have asked you, and these two are real decisions:**
+  1. **F6** — `ResolveKey` handles only `env:` and `none`; any other
+     `api_key_source` value silently skips the environment and reports a
+     `consulted` list that omits it. The auditor calls this the one remaining
+     finding that is near-blocking on merit. Fix it (it is `secrets.go`, so
+     out-of-band like everything else), or spec it?
+  2. **F7/F8** — `design.md` specifies nothing for R4.6, and publishes a
+     `ResolveKey(provider string)` signature the code does not implement, plus
+     five exports that appear nowhere in it. This is the artifact later specs are
+     told to consume. It needs a design amendment of the same kind you authorised
+     for the Go floor — that is your edit, not mine.
