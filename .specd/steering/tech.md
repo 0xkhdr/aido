@@ -21,3 +21,81 @@ priority: 20
 - <atomic writes / CAS / single static binary / …>
 - <the check that must always pass>
 <!-- specd:managed:steering/tech.md:v1 end -->
+
+---
+
+# Aido Project Law: Tech
+
+Rules are cited by id (`T5`). Blueprint is source material; this file is
+authority. Anything unresolved is in `reasoning.md`, not invented here.
+
+## Stack — Aido Core (this repo's primary artifact)
+
+- **Language / runtime:** Go 1.22 or newer. Single static binary. `CGO_ENABLED=0`.
+- **Build:** `go build ./...`
+- **Test:** `go test ./...`
+- **Vet:** `go vet ./...`
+- **Storage:** plain files only — YAML and Markdown under `.aido/`. No database.
+- **Interfaces:** CLI (primary), MCP server (agent bridge), gRPC (Workspace only).
+
+## Stack — Aido Workspace (separate project, same law)
+
+Tauri 2.0 (Rust shell) · Svelte 5 + TypeScript · Tailwind CSS · Svelte Runes for
+state · CodeMirror 6 · Marked · LayerChart · D3.js or Cytoscape.js · Lucide or
+Phosphor icons · Tauri bundler producing `.deb`.
+
+## Binding rules
+
+- **T1 — Dependency allowlist.** Core may depend only on: the Go standard
+  library, `github.com/go-git/go-git`, `gopkg.in/yaml.v3`, `github.com/spf13/cobra`,
+  the official Go MCP SDK, and Connect/bufbuild for gRPC. Everything else needs
+  an ADR in `.aido/okf/adr/` merged before the import lands.
+- **T2 — Standard library first.** A new dependency is refused when the standard
+  library covers the need. "Fewer lines in our repo" is not a justification;
+  "the stdlib version is incorrect on a named edge case" is.
+- **T3 — No cgo, no shelling out to `git`.** Git operations go through go-git.
+  A build that requires a C toolchain, or a runtime that requires the `git`
+  binary on PATH, is refused.
+- **T4 — No database.** SQLite and every other embedded or networked store are
+  out. Re-adding one requires an ADR that names the measured performance
+  problem file-based state failed to meet.
+- **T5 — No embeddings, no vector store, no similarity search.** No dependency
+  whose purpose is vectorization, indexing for ANN, or reranking. This enforces
+  `product.md` P2 at the dependency layer.
+- **T6 — LLM access is provider-neutral and adapter-shaped.** Providers are
+  reached over plain HTTP through a provider adapter. No vendor SDK is imported
+  into Core. Supported providers: OpenAI, Anthropic, Mistral, NVIDIA NIM,
+  OpenRouter, Ollama. Adding a provider means adding an adapter, never changing
+  the routing core.
+- **T7 — No LLM call may sit in a deterministic path.** Config parsing, file
+  layout, OKF conformance checks, witness diffing, and every CLI exit code are
+  pure functions of on-disk state. LLM output influences generated *content*
+  only, never control flow that a caller depends on.
+- **T8 — Model ids are configuration, never constants.** No model name, provider
+  base URL, or API key is hardcoded in Go source. They come from
+  `.aido/config.yaml` plus the key-resolution chain (`product.md` P7).
+- **T9 — Secrets never touch a tracked file.** Reading a key is allowed; writing
+  one is allowed only to `.aido/.secrets.yaml`, and only after aido has ensured
+  that path is git-ignored. Keys are never logged, never placed in error text,
+  and never sent anywhere but the provider they belong to.
+- **T10 — Writes are atomic.** Every file aido writes under `.aido/` is written
+  to a temp file in the same directory and renamed into place. A crash mid-write
+  must never leave a truncated request, config, or OKF document.
+- **T11 — Append-only means append-only.** `witness/*.log`, `okf/log.md`, and
+  repo-root `BRIDGE.log` are opened for append. Code that rewrites or truncates
+  them is a defect.
+- **T12 — Core never imports Workspace.** Enforces `product.md` P9 at the module
+  level. gRPC service definitions live in Core; the Rust and TypeScript clients
+  are generated in Workspace.
+- **T13 — Public output formats are contracts.** `config.yaml` keys, request
+  frontmatter, `links.yaml`, witness log lines, and any `--json` shape are
+  versioned surfaces. A breaking change to one needs an ADR and a version bump,
+  not a silent edit.
+
+## May not be added
+
+SQLite or any DB · any ORM · HTMX or any Core-side web UI · vector/embedding
+libraries · vendor LLM SDKs · a logging framework (use `log/slog`) · a testing
+framework or assertion library (use `testing`) · a DI container · a config
+library beyond `yaml.v3` · anything requiring cgo · anything requiring a daemon,
+service, or network listener other than the local gRPC server Workspace uses.

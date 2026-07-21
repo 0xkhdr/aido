@@ -30,3 +30,84 @@ priority: 20
   `capabilities`, `context`, `evidence`, `checks`. The six required columns alone are a valid table; the rest may be omitted —
   the production planning profile requires the full set.
 <!-- specd:managed:steering/structure.md:v1 end -->
+
+---
+
+# Aido Project Law: Structure
+
+Rules are cited by id (`S4`). Two layouts are law here: the `.aido/` on-disk
+contract (fixed by the blueprint, changing it breaks every consumer) and the Go
+source layout (a stated default — see `reasoning.md` open question OQ-2).
+
+## `.aido/` on-disk contract (authoritative)
+
+```
+.aido/
+├── config.yaml            # project config, repo-safe, no secrets
+├── .secrets.yaml          # API keys, git-ignored
+├── .gitignore             # aido-managed ignore rules
+├── okf/                   # OKF v0.1 bundle — project knowledge
+│   ├── index.md           # reserved: bundle root index
+│   ├── log.md             # reserved: bundle change history
+│   ├── architecture.md
+│   ├── domain-model.md
+│   ├── glossary.md
+│   ├── api-contracts.md
+│   ├── operations.md
+│   └── adr/               # index.md, log.md, NNN-slug.md
+├── requests/{slug}.md     # aido specs
+├── links.yaml             # slug → OKF concept ids
+├── witness/YYYY-MM-DD.log # append-only observation log
+├── templates/             # spec generation templates
+└── mcp-server/            # MCP bridge for coding agents
+```
+
+## Go source layout (aido-core)
+
+- **`cmd/aido/`** — CLI entrypoint. Flag parsing and wiring only; no business logic.
+- **`internal/okf/`** — OKF bundle read/write, frontmatter, conformance checks.
+- **`internal/request/`** — request ingestion, normalization, spec authoring.
+- **`internal/llm/`** — provider adapters, key resolution, task-based routing.
+- **`internal/agent/`** — coding-agent bridge (cheap inquiries, Aider spawn).
+- **`internal/witness/`** — sync, diff inference, witness log, flags.
+- **`internal/config/`** — `config.yaml` + `.secrets.yaml` load and validation.
+- **`proto/`** — gRPC service definitions consumed by Workspace.
+
+## Binding rules
+
+- **S1 — `.aido/` layout is a contract.** Adding, renaming, or moving a path in
+  the tree above requires an ADR and a documented migration. Reading code must
+  tolerate a missing optional path; writing code must never invent one.
+- **S2 — Reserved OKF filenames.** `index.md` and `log.md` are reserved in every
+  OKF directory and follow OKF structure when present. They are never used as
+  concept documents.
+- **S3 — OKF concept id = path without `.md`, relative to `.aido/`.** Example:
+  `okf/architecture`. A section anchor appends `#anchor`
+  (`okf/architecture#event-flow`). This is the only concept-id form allowed in
+  `links.yaml`, request bodies, and `BRIDGE.log` hints.
+- **S4 — One slug, everywhere.** A request's identifier is a kebab-case,
+  human-meaningful slug (`driver-eta-stale`). It is reused verbatim as the aido
+  request id, the request filename, the `links.yaml` key, and the specd slug.
+  Never mint a second identifier for the same work; never use an opaque or
+  numeric id where a slug belongs.
+- **S5 — Go package boundaries are enforced.** `internal/*` packages may not
+  import each other cyclically, and only `cmd/` may import more than two of
+  them. Business logic in `cmd/` is refused. A package that grows a second
+  unrelated responsibility gets split, not extended.
+- **S6 — Filesystem access is confined.** Only `internal/okf`, `internal/request`,
+  `internal/witness`, and `internal/config` touch `.aido/` paths. Other packages
+  receive parsed values, not paths. No package outside these four constructs a
+  path under `.aido/` by string concatenation.
+- **S7 — Naming.** Go: package names lowercase, no underscores, no `util`/`common`/
+  `helpers`/`manager` packages. Files: `snake_case.go`. Tests: `_test.go`
+  beside the source they cover, same package unless the test needs the external
+  view. Markdown and YAML on disk: kebab-case filenames, except reserved OKF
+  names and dated logs.
+- **S8 — ADRs.** `.aido/okf/adr/NNN-kebab-slug.md`, zero-padded three digits,
+  never renumbered, never deleted. A superseded ADR is marked superseded and
+  stays.
+- **S9 — Dated files.** Witness logs are `witness/YYYY-MM-DD.log`, UTC date, one
+  file per day, append-only, one event per line.
+- **S10 — `BRIDGE.log` lives at repo root.** Not under `.aido/`, not under
+  `.specd/`. It is the only cross-boundary artifact and is written by the coding
+  agent alone.

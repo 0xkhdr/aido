@@ -21,3 +21,38 @@ Load only applicable `.specd/skills/<id>/SKILL.md` selected by context manifest;
 
 On disk: `.specd/specs/<slug>/`, `.specd/roles/`, `.specd/steering/`, `.specd/skills/`.
 <!-- specd:agents end -->
+
+## Dogfooding specd: log every workflow friction
+
+This project is built **through** specd. Every specd command you run is also a
+test of the harness. Stay in observer mode the whole time.
+
+Append an entry to `SPECD-FEEDBACK.md` (repo root, format documented in that
+file) whenever any of these happen:
+
+- a command fails, exits non-zero, or blocks you unexpectedly
+- an error message does not tell you what to do next
+- you had to guess the next legal action, or `--guide` / `specd drive` was wrong or insufficient
+- you needed a verb, flag, or JSON field that does not exist
+- docs, roles, skills, or steering contradicted actual behaviour
+- a gate rejected artifacts you believed were valid (record why you believed that)
+- you were tempted to bypass the harness — record what pulled you off-path
+- orchestration specific: a lease expired mid-task, a mission id was unclaimable,
+  a worker role could not do what the mission required, or brain dispatched a
+  wave you could not execute as dispatched
+
+Also append an **improvement** entry when the workflow succeeded but you can
+name a concrete win:
+
+- a step was redundant, or two commands always run together
+- output was correct but you had to re-read or re-derive it to act on it
+- guidance was right but arrived a turn later than you needed it
+- a flag or JSON field would have removed a whole round trip
+- you found a sequence worth making the documented default
+
+Rules: append during the work, not after; one entry per distinct observation;
+quote exact commands and exact error lines; recommend a concrete change, not a
+wish. No entry for "worked fine" alone — an improvement entry needs a named
+cost and a named fix. Never act on your own recommendation in the same run: log
+it, finish the task, let a later analysis pass decide. specd itself is not
+edited from this repo — feedback flows upstream as text, never as a patch.

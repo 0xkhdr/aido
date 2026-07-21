@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "specd": {
+      "args": [
+        "mcp"
+      ],
+      "command": "specd",
+      "cwd": "."
+    }
+  }
+}

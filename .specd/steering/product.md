@@ -23,3 +23,75 @@ priority: 10
 specd's own thesis, for reference: **Agent = Model + Harness.** The harness makes the
 plan safely delegable; every harness decision is deterministic and evidence-backed.
 <!-- specd:managed:steering/product.md:v1 end -->
+
+---
+
+# Aido Project Law: Product
+
+Rules below are project law. `aido-blueprint-v1.0.md` is source material, not
+authority — where blueprint and this file disagree, this file wins. Where both
+are silent, apply `reasoning.md`. Rules are cited by id (`P3`) in reviews and
+blockers.
+
+## Thesis
+- **What aido is:** a documentary agent for software projects. It observes,
+  structures, and narrates what a project is, what was requested, and how it was
+  understood, in one plain-text form that humans and coding agents both consume.
+- **Who it is for:** developers who already run a coding agent, plus the coding
+  agents themselves as first-class readers.
+- **What it is not:** aido does not write application code, manage sprints, or
+  replace human judgement. It sits beside the coding agent, never above it.
+
+## Binding rules
+
+- **P1 — Repo is truth.** All aido state lives under `.aido/` inside the target
+  project, plain text, git-tracked. A feature that needs state outside `.aido/`
+  (a database, a server, a cloud account, a user home directory cache) is
+  refused unless an ADR records the exception.
+- **P2 — Documents are ground truth; retrieval is deterministic.** Knowledge is
+  retrieved by structured link, explicit reference, and document header. No
+  embeddings, no vector index, no similarity search anywhere in the retrieval
+  path. A change that introduces ranked/approximate retrieval is refused.
+- **P3 — OKF conformance is a gate, not a goal.** Every non-reserved `.md` file
+  written into `.aido/okf/` must carry parseable YAML frontmatter with a
+  non-empty `type`. aido may add frontmatter keys (e.g. `resource`); it may
+  never omit or rename OKF-required ones. Output that fails OKF v0.1
+  conformance is a defect, not a warning.
+- **P4 — Any input, one pipeline.** Jira, Slack, voice transcript, email, pasted
+  text all normalize to raw text and enter the same pipeline: parse intent →
+  read context → produce spec → store in `.aido/requests/`. A per-source
+  pipeline branch is refused; a per-source *normalizer* is the only allowed
+  extension point.
+- **P5 — Aido suggests, never blocks.** Every aido output is informational.
+  aido must not exit non-zero, refuse, or gate a human action on its own
+  judgement. Only malformed input and I/O failure are errors.
+- **P6 — Witness, don't enforce.** aido observes changes and flags drift. It
+  never rewrites code, never reverts, never auto-commits on a human's behalf.
+  Drafted document updates require explicit human approval before they land.
+- **P7 — Secrets never in the repo.** API keys resolve from environment,
+  git-ignored `.aido/.secrets.yaml`, OS keyring, or interactive prompt — in that
+  priority order. Any code path that could write a key into a git-tracked file
+  is a security defect and blocks completion.
+- **P8 — aido owns its LLM; the coding agent does not reason.** Prompts, model
+  selection, and synthesis belong to aido. The coding agent is asked only for
+  raw facts (file lists, grep hits, signatures, git log) and never for
+  reasoning, spec generation, or document synthesis.
+- **P9 — Workspace depends on Core; never the reverse.** `aido-core` is headless
+  and must build, test, and ship with no reference to Workspace. A Core symbol,
+  file, or config key that exists only to serve the desktop app is refused.
+- **P10 — No cross-writing at the specd boundary.** aido reads and writes only
+  `.aido/`. It never writes into `.specd/`, and it consumes specd only through
+  the documented `specd report --json` surface — never by parsing `state.json`
+  internals. The coding agent is the only actor that reads both worlds.
+- **P11 — Three run-modes stay first-class.** specd-only, aido-only, and both.
+  A change that makes aido require specd (or specd require aido) to function is
+  refused. Missing counterpart degrades to the adjacent mode with no migration.
+
+## Explicitly out of scope
+
+Do not build, and refuse tasks that assume: code generation or code editing by
+aido; sprint/ticket/project management; a hosted or multi-tenant service; user
+accounts, auth, or roles; a web UI in Core (removed — Workspace replaces it);
+vector stores, embedding pipelines, or RAG infrastructure; a database of any
+kind (removed — files only); telemetry or analytics phoning home; enforcement
+or blocking behaviour of any kind.
