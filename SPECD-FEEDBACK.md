@@ -1348,3 +1348,39 @@ stated plainly and stays a proposal — never a self-applied change.
   signature deviation, the unimplemented requirements edge case, and now this.
   specd models authoring well and repair barely at all.
 - **Status:** open
+
+### 2026-07-21 — friction — the review report's HEAD field cannot be refreshed without destroying the report
+
+- **Context:** spec `aido-config`, verify phase, at the very end. The auditor's
+  verdict reached `approve`, the criteria blocker cleared at 25/25, T8
+  completed — and a new blocker appeared in place of the old one:
+  ```
+  blocker: review.required: approve verdict is stale (report HEAD 5cffbab12c21, current HEAD b3b3c78940c8); re-review at the current commit
+  ```
+- **The message is right and the situation is unresolvable as designed.**
+  `- **Git HEAD:** 5cffbab…` was stamped by `specd review` when it scaffolded the
+  file, twelve commits earlier. The scaffold pins the HEAD at *creation* time;
+  the gate compares it to HEAD at *completion* time; nothing in between updates
+  it. Any spec whose review is not the last commit before approval hits this.
+- **The only refresh path is destructive.** `specd review` refuses a second run
+  with `review report already exists for HEAD …; pass --force to overwrite`, and
+  `--force` overwrites the scaffold — discarding a report that by then held six
+  audit passes, a twenty-case probe matrix, and roughly thirty findings. The verb
+  offers no way to re-stamp the header while preserving the body.
+- **What this run did:** asked the auditor to set the field itself to the commit
+  it verified. That is accurate — the reviewer owns the field, and a document
+  claiming to describe a twelve-commit-old tree is *less* truthful than one
+  naming what was actually read. But it is a convention this run invented,
+  enforced by nothing.
+- **Root cause:** harness gap. Review provenance is captured once and then
+  compared against a moving target.
+- **Recommendation:** (a) add `specd review --restamp` (or make a re-run without
+  `--force` update the HEAD line and leave the body untouched) so refreshing
+  provenance is not the same operation as discarding the review; (b) better,
+  record the reviewed HEAD in the *evidence envelope* rather than in prose — the
+  `eval import` record already carries `subject_revision`, and this run's imports
+  have carried the correct HEAD at every pass while the document drifted. The
+  gate is reading the least reliable of the two sources it has; (c) if the prose
+  field stays authoritative, have `specd review` warn when it is scaffolded that
+  the report must be the last thing written before approval.
+- **Status:** open
