@@ -55,7 +55,7 @@ source layout (a stated default — see `reasoning.md` open question OQ-2).
 │   ├── api-contracts.md
 │   ├── operations.md
 │   └── adr/               # index.md, log.md, NNN-slug.md
-├── requests/{slug}.md     # aido specs
+├── queries/{slug}.md      # aido specs
 ├── links.yaml             # slug → OKF concept ids
 ├── witness/YYYY-MM-DD.log # append-only observation log
 ├── templates/             # spec generation templates
@@ -66,7 +66,7 @@ source layout (a stated default — see `reasoning.md` open question OQ-2).
 
 - **`cmd/aido/`** — CLI entrypoint. Flag parsing and wiring only; no business logic.
 - **`internal/okf/`** — OKF bundle read/write, frontmatter, conformance checks.
-- **`internal/request/`** — request ingestion, normalization, spec authoring.
+- **`internal/query/`** — query ingestion, normalization, spec authoring.
 - **`internal/llm/`** — provider adapters, key resolution, task-based routing.
 - **`internal/agent/`** — coding-agent bridge (cheap inquiries, Aider spawn).
 - **`internal/witness/`** — sync, diff inference, witness log, flags.
@@ -84,17 +84,17 @@ source layout (a stated default — see `reasoning.md` open question OQ-2).
 - **S3 — OKF concept id = path without `.md`, relative to `.aido/`.** Example:
   `okf/architecture`. A section anchor appends `#anchor`
   (`okf/architecture#event-flow`). This is the only concept-id form allowed in
-  `links.yaml`, request bodies, and `BRIDGE.log` hints.
-- **S4 — One slug, everywhere.** A request's identifier is a kebab-case,
+  `links.yaml`, query bodies, and `BRIDGE.log` hints.
+- **S4 — One slug, everywhere.** A query's identifier is a kebab-case,
   human-meaningful slug (`driver-eta-stale`). It is reused verbatim as the aido
-  request id, the request filename, the `links.yaml` key, and the specd slug.
+  query id, the query filename, the `links.yaml` key, and the specd slug.
   Never mint a second identifier for the same work; never use an opaque or
   numeric id where a slug belongs.
 - **S5 — Go package boundaries are enforced.** `internal/*` packages may not
   import each other cyclically, and only `cmd/` may import more than two of
   them. Business logic in `cmd/` is refused. A package that grows a second
   unrelated responsibility gets split, not extended.
-- **S6 — Filesystem access is confined.** Only `internal/okf`, `internal/request`,
+- **S6 — Filesystem access is confined.** Only `internal/okf`, `internal/query`,
   `internal/witness`, and `internal/config` touch `.aido/` paths. Other packages
   receive parsed values, not paths. No package outside these four constructs a
   path under `.aido/` by string concatenation.

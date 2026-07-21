@@ -8,7 +8,7 @@
 
 ## 1. Philosophy
 
-Aido is a **documentary agent** for software projects. It does not write code, manage sprints, or replace human judgment. Its sole purpose is to **observe, structure, and narrate** what a project is, what was requested, and how it was understood — in a form both humans and coding agents can consume.
+Aido is a **documentary agent** for software projects. It does not write code, manage sprints, or replace human judgment. Its sole purpose is to **observe, structure, and narrate** what a project is, what was asked, and how it was understood — in a form both humans and coding agents can consume.
 
 Aido sits **beside** the coding agent, not above it. Both serve the human. The human is the only required bridge.
 
@@ -19,7 +19,7 @@ Aido sits **beside** the coding agent, not above it. Both serve the human. The h
 1. **Repo is truth.** `.aido/` lives inside the project, versioned with code.
 2. **Documents are ground truth.** No embedding layer between AI and knowledge. Deterministic retrieval via structured links, explicit references, and document headers — not similarity search.
 3. **OKF interoperability.** Knowledge conforms to the **Open Knowledge Format (OKF)** — an open, human- and agent-friendly format for representing knowledge as markdown files with YAML frontmatter.
-4. **Any input, one pipeline.** Jira, Slack, voice, email, freeform text — all normalize to the same pipeline: parse intent → read context → produce spec → store in `.aido/requests/`.
+4. **Any input, one pipeline.** Jira, Slack, voice, email, freeform text — all normalize to the same pipeline: parse intent → read context → produce spec → store in `.aido/queries/`.
 5. **Human decides.** Aido suggests, never blocks. Flags are informational.
 6. **Agent is optional assistant.** The coding agent helps Aido explore, then implements. Aido helps the coding agent understand, then witnesses.
 7. **Communication is file-based.** No APIs, no protocols, no tokens wasted on plumbing. The project repository is the single source of truth.
@@ -50,8 +50,8 @@ Aido is split into two independent but cooperating projects:
 │              Native Desktop Application (Tauri + Svelte)             │
 │  • Rich GUI for managing multiple Aido projects                      │
 │  • OKF visual explorer (graph view, document tree)                   │
-│  • Request CRUD + EARS editor with live preview                      │
-│  • Request progress tracking & history timeline                      │
+│  • Query CRUD + EARS editor with live preview                        │
+│  • Query progress tracking & history timeline                        │
 │  • LLM chat interface (context-aware: general, spec-building, OKF)   │
 │  • Provider API key management UI                                    │
 │  • Coding agent configuration (Aider support)                        │
@@ -75,7 +75,7 @@ Aido is split into two independent but cooperating projects:
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      CODING AGENT (Aider / Claude Code / etc.)       │
-│  • Reads `.aido/requests/{id}.md` for specs                          │
+│  • Reads `.aido/queries/{id}.md` for specs                           │
 │  • Reads linked OKF documents                                        │
 │  • Implements code                                                   │
 │  • Updates OKF docs if architecture/domain/APIs changed              │
@@ -103,8 +103,8 @@ Aido's `.aido/okf/` directory is an **OKF v0.1 bundle** — a directory tree of 
 
 Aido stores all its state inside the target project under `.aido/`. This includes:
 - Configuration
-- Processed requests and their specifications
-- Links between requests and OKF concepts
+- Processed queries and their specifications
+- Links between queries and OKF concepts
 - Witness logs of observed changes
 - Templates for specifications
 - The project's OKF knowledge bundle
@@ -113,7 +113,7 @@ Everything is plain text, human-readable, and git-tracked.
 
 ### 3.4 Any Input, One Pipeline
 
-A request can arrive as a Jira ticket, a freeform Slack message, a voice transcript, an email, or a pasted description. All inputs normalize to the same pipeline: parse intent → read context → produce spec → store in `.aido/requests/`.
+A query can arrive as a Jira ticket, a freeform Slack message, a voice transcript, an email, or a pasted description. All inputs normalize to the same pipeline: parse intent → read context → produce spec → store in `.aido/queries/`.
 
 ### 3.5 Human-in-the-Loop
 
@@ -121,7 +121,7 @@ AI suggests. The human confirms, edits, or overrides. Aido never blocks. Flags a
 
 ### 3.6 Coding Agent as Assistant
 
-Aido may ask the coding agent cheap exploratory questions (file trees, function signatures, grep results) to clarify a request. The coding agent implements the final spec. After implementation, the coding agent may optionally update documents and report back to Aido via simple file-based communication.
+Aido may ask the coding agent cheap exploratory questions (file trees, function signatures, grep results) to clarify a query. The coding agent implements the final spec. After implementation, the coding agent may optionally update documents and report back to Aido via simple file-based communication.
 
 ---
 
@@ -148,11 +148,11 @@ Aido may ask the coding agent cheap exploratory questions (file trees, function 
 │       ├── log.md                   # ✅ OKF
 │       └── 001-kafka.md             # ✅ OKF concept
 │
-├── requests/                        # Aido specs (OKF-inspired frontmatter)
-│   ├── req-001.md
-│   └── req-002.md
+├── queries/                         # Aido specs (OKF-inspired frontmatter)
+│   ├── q-001.md
+│   └── q-002.md
 │
-├── links.yaml                       # Request → OKF concept mappings
+├── links.yaml                       # Query → OKF concept mappings
 ├── witness/                         # Aido observation logs
 │   └── 2026-07-20.log
 ├── templates/                       # Spec generation templates
@@ -322,23 +322,23 @@ timestamp: 2026-07-20T10:00:00Z
 * **Initialization**: Established foundational knowledge structure.
 ```
 
-### 4.9 Request Specification Format
+### 4.9 Query Specification Format
 
-Stored in `.aido/requests/{id}.md`:
+Stored in `.aido/queries/{id}.md`:
 
 ```markdown
 ---
 aido_version: "0.1"
-id: req-001
+id: q-001
 source: jira://TAXI-2847
 title: "Driver app keeps showing wrong ETA"
-raw_request: "..."
+raw_query: "..."
 status: implemented
 implemented_by: agent-aider
 commits: [def456, ghi789]
 ---
 
-# Request: Driver ETA Stale After Acceptance
+# Query: Driver ETA Stale After Acceptance
 
 ## Context
 ...
@@ -371,11 +371,11 @@ When the `RideAccepted` event is handled, the system shall invalidate the cached
 Uses OKF concept IDs (file paths without `.md`):
 
 ```yaml
-req-001:
+q-001:
   - okf/architecture#event-flow
   - okf/redis-caching-strategy#ttl-policy
 
-req-002:
+q-002:
   - okf/domain-model#driver-onboarding
   - okf/api-contracts#driver-registration
 ```
@@ -386,9 +386,9 @@ Plain text, append-only:
 
 ```
 2026-07-20T14:32:01Z SYNC main abc123->def456 okf/architecture.md changed
-2026-07-20T15:10:33Z REQUEST req-001 implemented commits=[def456,ghi789] docs_changed=[okf/redis-caching-strategy.md]
-2026-07-20T15:10:33Z WITNESS req-001 linked docs: all updated OK
-2026-07-20T16:45:12Z REQUEST req-002 implemented commits=[jkl012] docs_changed=[] FLAG: no doc updates for linked docs
+2026-07-20T15:10:33Z QUERY q-001 implemented commits=[def456,ghi789] docs_changed=[okf/redis-caching-strategy.md]
+2026-07-20T15:10:33Z WITNESS q-001 linked docs: all updated OK
+2026-07-20T16:45:12Z QUERY q-002 implemented commits=[jkl012] docs_changed=[] FLAG: no doc updates for linked docs
 ```
 
 ---
@@ -497,7 +497,7 @@ coding_agent:
 ```
 
 **Aider workflow with Aido:**
-1. Aido Core produces spec in `.aido/requests/{id}.md`
+1. Aido Core produces spec in `.aido/queries/{id}.md`
 2. Developer (or Workspace) spawns Aider with the spec as context
 3. Aider reads the spec, adds relevant files to context via `/add`
 4. Aider implements changes, auto-commits with descriptive messages
@@ -556,7 +556,7 @@ The coding agent does **no reasoning** — just returns raw text. Aido's LLM doe
 │  │  Views:                         │    │
 │  │  • Dashboard (project health)   │    │
 │  │  • OKF Explorer (graph + tree)  │    │
-│  │  • Request Manager (list + CRUD)│    │
+│  │  • Query Manager (list + CRUD)  │    │
 │  │  • Spec Editor (EARS + preview) │    │
 │  │  • LLM Chat (thread-based)      │    │
 │  │  • Witness Log (timeline)       │    │
@@ -591,15 +591,15 @@ service AidoCore {
   // OKF
   rpc ReadOKFDocument(ReadOKFDocumentRequest) returns (OKFDocument);
   rpc WriteOKFDocument(WriteOKFDocumentRequest) returns (OKFDocument);
-  rpc QueryOKF(QueryOKFRequest) returns (QueryOKFResponse);
+  rpc SearchOKF(SearchOKFRequest) returns (SearchOKFResponse);
   rpc ListOKFDocuments(ListOKFDocumentsRequest) returns (ListOKFDocumentsResponse);
 
-  // Requests
-  rpc CreateRequest(CreateRequestRequest) returns (Request);
-  rpc GetRequest(GetRequestRequest) returns (Request);
-  rpc ListRequests(ListRequestsRequest) returns (ListRequestsResponse);
-  rpc UpdateRequest(UpdateRequestRequest) returns (Request);
-  rpc DeleteRequest(DeleteRequestRequest) returns (Empty);
+  // Queries
+  rpc CreateQuery(CreateQueryRequest) returns (Query);
+  rpc GetQuery(GetQueryRequest) returns (Query);
+  rpc ListQueries(ListQueriesRequest) returns (ListQueriesResponse);
+  rpc UpdateQuery(UpdateQueryRequest) returns (Query);
+  rpc DeleteQuery(DeleteQueryRequest) returns (Empty);
 
   // LLM Chat (streaming)
   rpc Chat(stream ChatMessage) returns (stream ChatMessage);
@@ -607,7 +607,7 @@ service AidoCore {
 
   // Config
   rpc GetConfig(GetConfigRequest) returns (Config);
-  rpc UpdateConfig(UpdateRequestRequest) returns (Config);
+  rpc UpdateConfig(UpdateConfigRequest) returns (Config);
   rpc SetSecret(SetSecretRequest) returns (Empty);
   rpc TestProvider(TestProviderRequest) returns (TestProviderResponse);
 
@@ -635,7 +635,7 @@ service AidoCore {
 - **Document Viewer:** Custom Svelte component rendering OKF markdown with YAML frontmatter as styled cards
 - **Search:** Full-text search across all OKF documents (powered by Core)
 
-#### 2. Request Manager & EARS Editor
+#### 2. Query Manager & EARS Editor
 - **List View:** Table with filters (status, date, linked OKF docs)
 - **Detail View:** Split pane — EARS markdown editor (CodeMirror 6) on left, rendered preview on right
 - **EARS Validation:** Real-time parsing of EARS syntax (`When... the system shall...`)
@@ -644,7 +644,7 @@ service AidoCore {
 #### 3. LLM Chat Interface
 - **Context Modes:**
   - **General:** Free chat, uses project OKF as RAG context
-  - **Spec Building:** Chat history feeds into `CreateRequest()`, structured output
+  - **Spec Building:** Chat history feeds into `CreateQuery()`, structured output
   - **OKF Q&A:** Questions about architecture/domain model, grounded in documents
 - **Features:** Streaming responses, code blocks with copy, citation of OKF sources, thread persistence
 
@@ -697,7 +697,7 @@ Tauri 2.0 built-in `.deb` support:
 1. Developer runs `aido init taxi` (CLI) or clicks "New Project" in Workspace
 2. Aido Core detects git repository, suggests tracking branch "main"
 3. Developer confirms
-4. Core initializes `.aido/` directory with `config.yaml`, `.gitignore`, `templates/`, `requests/`, `witness/`
+4. Core initializes `.aido/` directory with `config.yaml`, `.gitignore`, `templates/`, `queries/`, `witness/`
 5. Core asks for LLM provider and model preference
 6. Core securely stores API key in `.aido/.secrets.yaml` (git-ignored)
 7. Core asks for coding agent preference (default: Aider)
@@ -706,22 +706,22 @@ Tauri 2.0 built-in `.deb` support:
 10. Once present, Core records `last_sync_commit` and is ready
 11. Workspace displays project in dashboard with health indicators
 
-### Phase 2: Request Ingestion (Any Input)
+### Phase 2: Query Ingestion (Any Input)
 
-1. Developer describes request (Jira URL, freeform text, pasted message) — in Workspace or CLI
+1. Developer describes query (Jira URL, freeform text, pasted message) — in Workspace or CLI
 2. Core normalizes input to raw text
 3. Core reads `.aido/config.yaml` for required documents
 4. Core reads relevant `.aido/okf/` OKF files (whole or by section header)
 5. If unclear, Core asks coding agent cheap exploratory questions
 6. Core routes spec generation to configured LLM
-7. Core produces structured spec in `.aido/requests/{id}.md`
+7. Core produces structured spec in `.aido/queries/{id}.md`
 8. Core stores explicit links in `.aido/links.yaml`
 9. Workspace renders spec in editor; developer reviews, edits, confirms
 10. Or: developer edits file directly with their editor (CLI workflow)
 
 ### Phase 3: Implementation
 
-1. Coding agent (Aider) reads spec from `.aido/requests/{id}.md`
+1. Coding agent (Aider) reads spec from `.aido/queries/{id}.md`
 2. Aider reads linked OKF documents
 3. Aider implements code (Architect mode for complex tasks)
 4. If architecture, domain model, or APIs changed: Aider updates relevant `.aido/okf/` OKF files
@@ -733,9 +733,9 @@ Tauri 2.0 built-in `.deb` support:
 1. Aido Core monitors tracked branch for OKF document changes
 2. On sync, Core checks if linked OKF concepts changed in implementation commits
 3. If docs changed: silent, corpus is fresh
-4. If docs unchanged: flag request as "consider reviewing linked documents"
+4. If docs unchanged: flag query as "consider reviewing linked documents"
 5. Flag is informational, not blocking
-6. Workspace displays updated status in request timeline
+6. Workspace displays updated status in query timeline
 
 ---
 
@@ -761,7 +761,7 @@ Additional documents (ADRs, deep dives) live in `.aido/okf/adr/` or as sections 
 # Aido Skill for Coding Agents
 
 When starting work:
-1. Read `.aido/requests/{id}.md` for the spec
+1. Read `.aido/queries/{id}.md` for the spec
 2. Read linked OKF documents in the spec
 3. Implement
 
@@ -771,7 +771,7 @@ When done:
    - Append change to `.aido/okf/log.md`
    - Note which docs changed
 2. Append to `.aido/witness/{date}.log`:
-   IMPLEMENTATION {request_id} commits=[{hashes}] docs_changed=[{paths}]
+   IMPLEMENTATION {query_id} commits=[{hashes}] docs_changed=[{paths}]
 ```
 
 No API calls. No special protocol. Just file-based communication.
@@ -806,7 +806,7 @@ Aido is:
 - An **OKF producer** — generates conformant knowledge documents
 - An **OKF consumer** — reads any OKF bundle
 - An **OKF witness** — tracks changes, flags drift
-- Plus **Aido-specific** request processing, EARS generation, agent bridge
+- Plus **Aido-specific** query processing, EARS generation, agent bridge
 
 ---
 
@@ -817,7 +817,7 @@ Aido is:
 specd and aido are **two planes that share one repository**, not two tools competing for the same job.
 
 - **specd is the enforcement plane.** A deterministic, LLM-free harness. It ratchets a spec through `perceive → analyze → plan → execute → verify → reflect`, gates every state change on evidence (a `verify` exit `0` pinned to a real git HEAD), and requires a human `approve` at each boundary. Its tagline: *the agent reasons, the harness enforces.*
-- **aido is the documentary + reasoning plane.** An LLM-owning agent. It holds the project's OKF knowledge base, answers questions grounded in it, structures your raw request into a clean EARS-shaped request, and witnesses commits so documentation stays a first-class citizen.
+- **aido is the documentary + reasoning plane.** An LLM-owning agent. It holds the project's OKF knowledge base, answers questions grounded in it, structures your raw query into a clean EARS-shaped query, and witnesses commits so documentation stays a first-class citizen.
 
 They are already compatible where it counts: **both speak EARS**, both are Go, both are file-native and git-tracked, both are plain-markdown-plus-a-structured-sidecar, and both speak MCP. So this is a **bridge, not a merge** — and the bridge is **pure convention**: a documented contract plus a skill the coding agent loads. No adapter code lives in either project.
 
@@ -831,11 +831,11 @@ There are exactly **three actors** and **two owned directories**. The coding age
 
 ```
         ┌──────────────────────────── aido world (.aido/) ────────────────────────────┐
-        │  OKF knowledge base   ·   aido request (.aido/requests/{slug}.md)   ·        │
+        │  OKF knowledge base   ·   aido query (.aido/queries/{slug}.md)      ·        │
         │  links.yaml   ·   witness log                                                │
-        │  Owner: aido (LLM-driven). Answers your questions. Structures your request.  │
+        │  Owner: aido (LLM-driven). Answers your questions. Structures your query.    │
         └───────────────▲───────────────────────────────────────────────┬─────────────┘
-                        │ (reads OKF + aido request as grounding)         │ (reads git HEAD +
+                        │ (reads OKF + aido query as grounding)           │ (reads git HEAD +
                         │                                                 │  specd report --json)
                 ┌───────┴─────────────────────────────────────────────────▼───────┐
                 │                     CODING AGENT (the membrane)                   │
@@ -854,18 +854,18 @@ There are exactly **three actors** and **two owned directories**. The coding age
 
 Every hop is a file or CLI read — never a code call:
 
-1. **You ask aido a question or hand it a raw request.** aido answers / structures it from OKF, and writes `.aido/requests/{slug}.md` (aido's version, EARS-shaped, with the OKF concepts it leaned on recorded in `links.yaml`). **Nothing in `.specd/` touched.**
+1. **You ask aido a question or hand it a raw query.** aido answers / structures it from OKF, and writes `.aido/queries/{slug}.md` (aido's version, EARS-shaped, with the OKF concepts it leaned on recorded in `links.yaml`). **Nothing in `.specd/` touched.**
 2. **Agent (analyze → reformat into specd's complete flow).** Loaded with the Bridge Skill, the agent reads the aido spec + the referenced OKF docs, runs `specd new <slug>`, and **re-derives** specd's own flow. Requirements come out as specd-native EARS. Then, through the gated loop, it re-derives `design.md` and `tasks.md`. **The aido spec is never fed to specd's pipeline** — only these agent-authored artifacts are.
 3. **Human ratchet.** You review and `specd approve requirements`. Then design → tasks → waves → verify → complete, all gated. aido is not in this loop.
 4. **Execute + evidence.** `specd next` → `specd verify` (exit 0, pinned to HEAD) → `specd complete-task`. specd will not mark done without the passing record. specd artifacts stay OKF-agnostic — no concept ids stamped anywhere.
 5. **Breadcrumb.** Agent appends to `BRIDGE.log`: `HANDOFF slug=<slug> specd_status=complete head=<sha> okf_hints=[...]`.
-6. **aido (witness + document).** aido takes its request-time `links.yaml` priors, reads `specd report <slug> --history --json` + the diff, runs a broad diff→OKF inference, notices which docs changed, and **flags / drafts** an update for your approval. It appends to `okf/log.md`. Docs stay first-class.
+6. **aido (witness + document).** aido takes its query-time `links.yaml` priors, reads `specd report <slug> --history --json` + the diff, runs a broad diff→OKF inference, notices which docs changed, and **flags / drafts** an update for your approval. It appends to `okf/log.md`. Docs stay first-class.
 
-The loop closes — OKF → request → requirements → commits → witness → OKF — with **zero code coupling**.
+The loop closes — OKF → query → requirements → commits → witness → OKF — with **zero code coupling**.
 
 ---
 
-## 15. Bridge Contract v0.1 (Summary)
+## 15. Bridge Contract v0.2 (Summary)
 
 > **Full contract:** See `docs/bridge-contract.md` for the complete, versioned convention.
 
@@ -875,11 +875,11 @@ The loop closes — OKF → request → requirements → commits → witness →
 - The coding agent reads both, writes only `.specd/` (via CLI) and source. **No process writes across the boundary.**
 
 ### 15.2 Identifier & Trace Convention
-- A single **slug** (kebab-case, human-meaningful, e.g. `driver-eta-stale`) is minted when aido creates the request.
-- It is reused verbatim as: aido request id **and** specd slug (`specd new driver-eta-stale`).
+- A single **slug** (kebab-case, human-meaningful, e.g. `driver-eta-stale`) is minted when aido creates the query.
+- It is reused verbatim as: aido query id **and** specd slug (`specd new driver-eta-stale`).
 - **Trace chain (Option B — loose coupling).** specd artifacts stay **OKF-agnostic**: no OKF ids are ever stamped into `requirements.md`, `design.md`, or `tasks.md`. The chain is anchored on the shared **slug**:
-  `OKF concept ids  ←(recorded at request time)→  aido request + links.yaml  ←(shared slug)→  specd spec  →(git)→  commits`
-- aido records the OKF concepts the request leaned on in `links.yaml` **at request time** — this is the primary witness anchor. At witness time aido joins `slug → concepts` (from `links.yaml`) with `slug → commits` (from git / `report --json`) and infers doc drift with its own reasoning over the diff.
+  `OKF concept ids  ←(recorded at query time)→  aido query + links.yaml  ←(shared slug)→  specd spec  →(git)→  commits`
+- aido records the OKF concepts the query leaned on in `links.yaml` **at query time** — this is the primary witness anchor. At witness time aido joins `slug → concepts` (from `links.yaml`) with `slug → commits` (from git / `report --json`) and infers doc drift with its own reasoning over the diff.
 
 ### 15.3 Format Independence (No Dialect Coupling)
 - The two tools keep **their own formats.** aido writes the aido spec in aido's style; specd's `ears` gate validates only the **agent-authored** specd `requirements.md`. aido is under no obligation to satisfy specd's grammar, and specd never sees aido's file.
@@ -896,22 +896,22 @@ On the last completed task (or at submit), the agent appends one line to a **neu
 ```
 HANDOFF slug=driver-eta-stale specd_status=complete head=<sha> okf_hints=[architecture#event-flow, redis-caching#ttl]
 ```
-Under Option B the `okf_hints` are exactly that — **hints, not authority.** They cost nothing (they live outside both trees, specd never sees them) and they let the agent pass forward any concept it discovered *during* implementation that aido couldn't have known at request time. aido is free to trust, verify, or ignore them; its own re-derivation over `links.yaml` + the diff remains the source of truth.
+Under Option B the `okf_hints` are exactly that — **hints, not authority.** They cost nothing (they live outside both trees, specd never sees them) and they let the agent pass forward any concept it discovered *during* implementation that aido couldn't have known at query time. aido is free to trust, verify, or ignore them; its own re-derivation over `links.yaml` + the diff remains the source of truth.
 
 ### 15.6 Versioning & Degradation
-- The contract carries a `bridge_contract: "0.1"` marker (in the skill header and the aido request frontmatter).
+- The contract carries a `bridge_contract: "0.2"` marker (in the skill header and the aido query frontmatter).
 - If a party sees an unknown version, it degrades to file-only, read-only behavior and surfaces a notice rather than guessing.
 
 ---
 
-## 16. Bridge Skill v0.1 (The "Code" of a No-Code Bridge)
+## 16. Bridge Skill v0.2 (The "Code" of a No-Code Bridge)
 
 A single markdown skill the coding agent loads alongside specd's `AGENTS.md`. It can also be referenced from a specd `steering/*.md` file (specd-native) and from aido's coding-agent skill list — both by convention, neither authoring the other.
 
 ```markdown
 ---
 name: aido-specd-bridge
-bridge_contract: "0.1"
+bridge_contract: "0.2"
 applies_to: coding-agent (Claude Code / Aider / Cursor / custom)
 ---
 
@@ -921,7 +921,7 @@ You are the membrane between two worlds. You read both; you write only `.specd/`
 (via the specd CLI) and source code. You never edit files under `.aido/`.
 
 ## When starting from an aido spec
-1. Read `.aido/requests/<slug>.md` (the aido spec) — human-approved *intent* and source material, not a file to ingest or copy.
+1. Read `.aido/queries/<slug>.md` (the aido spec) — human-approved *intent* and source material, not a file to ingest or copy.
 2. Read every OKF doc it references (spec body + `.aido/links.yaml`). These are your grounding; the knowledge base of record is `.aido/okf/`.
 3. Run `specd new <slug>` (reuse the aido slug verbatim).
 4. **Reformat, don't translate.** Analyze the aido spec against the OKF grounding and re-derive specd's *complete* flow in specd's own grammar — author `requirements.md`, then through the gated loop author `design.md` and `tasks.md`. The aido spec never enters specd's pipeline; only your specd-native artifacts do.
@@ -937,11 +937,11 @@ You are the membrane between two worlds. You read both; you write only `.specd/`
 - Append the witness breadcrumb (Bridge Contract §15.5) to the repo-root `BRIDGE.log`:
   `HANDOFF slug=<slug> specd_status=<status> head=<sha> okf_hints=[...]`
 - `okf_hints` are optional pass-forward hints for aido — include any OKF concept you noticed
-  the change actually touched (especially ones the original request didn't anticipate). Hints, not authority.
+  the change actually touched (especially ones the original query didn't anticipate). Hints, not authority.
 - Do not touch `.aido/okf/` yourself. aido owns documentation. Your job ends at the breadcrumb.
 
 ## If aido is not present
-- There is no aido request. Proceed with specd's normal flow from a human-written
+- There is no aido query. Proceed with specd's normal flow from a human-written
   requirements.md. This skill simply doesn't fire.
 ```
 
@@ -953,8 +953,8 @@ That skill file **is** the integration. Everything else is the two tools behavin
 
 | Mode | What runs | How it works |
 |---|---|---|
-| **specd only** | `.specd/` + coding agent | Human hand-authors `requirements.md`. The Bridge Skill never fires (no aido request). specd is unaware aido exists. |
-| **aido only** | `.aido/` + any coding agent | aido answers questions, structures requests, and witnesses. The coding agent implements straight from `.aido/requests/` using aido's existing coding-agent integration (Aider, etc.). specd is absent. |
+| **specd only** | `.specd/` + coding agent | Human hand-authors `requirements.md`. The Bridge Skill never fires (no aido query). specd is unaware aido exists. |
+| **aido only** | `.aido/` + any coding agent | aido answers questions, structures queries, and witnesses. The coding agent implements straight from `.aido/queries/` using aido's existing coding-agent integration (Aider, etc.). specd is absent. |
 | **Both** | full loop (§14.4) | The Bridge Skill connects them. Still no code coupling — the agent is the only thing that knows both. |
 
 Removing either tool degrades to the adjacent mode with **no migration** — because nothing was ever cross-written.
@@ -974,14 +974,14 @@ specd therefore **never needs to ingest OKF at all.** Its bounded-context manife
 ### Witness Precision: Option B (Looser Coupling)
 
 specd stays **100% OKF-agnostic**. No OKF ids in any specd artifact. aido re-derives which concepts a completed spec touched, using:
-- `links.yaml` — the `slug → OKF concepts` mapping aido recorded **at request time** (the primary anchor / priors).
+- `links.yaml` — the `slug → OKF concepts` mapping aido recorded **at query time** (the primary anchor / priors).
 - The diff + commits for that slug (git, or `report --json`).
 - Its own LLM reasoning over the diff to confirm which concept docs the change affected and whether they were updated.
 - Optionally, the `okf_hints` the agent left in `BRIDGE.log` (§15.5) — pass-forward hints, never binding.
 
 **Why this fits aido's identity.** Determinism lives in specd; inference lives in aido. Option B puts the concept-mapping *inference* exactly where the inference engine already is. specd literally cannot tell aido exists — the cleanest possible separation.
 
-**The one consequence to design around.** With no specd-side backstop, witness precision now rests on two things: (1) how thoroughly aido records concepts in `links.yaml` at request time, and (2) aido's diff inference at witness time. If implementation drifts and pulls in a concept the original request never anticipated, links.yaml won't contain it — so aido must catch it by inference (helped by the optional `okf_hints`). Mitigation is cheap and on-brand: aido's witness pass should run a **broad diff→OKF inference** (not limited to links.yaml priors), since aido owns an LLM and reads OKF directly. Record `links.yaml` generously; treat it as priors, not a whitelist.
+**The one consequence to design around.** With no specd-side backstop, witness precision now rests on two things: (1) how thoroughly aido records concepts in `links.yaml` at query time, and (2) aido's diff inference at witness time. If implementation drifts and pulls in a concept the original query never anticipated, links.yaml won't contain it — so aido must catch it by inference (helped by the optional `okf_hints`). Mitigation is cheap and on-brand: aido's witness pass should run a **broad diff→OKF inference** (not limited to links.yaml priors), since aido owns an LLM and reads OKF directly. Record `links.yaml` generously; treat it as priors, not a whitelist.
 
 ---
 
@@ -989,7 +989,7 @@ specd stays **100% OKF-agnostic**. No OKF ids in any specd artifact. aido re-der
 
 **Bug:** "Driver ETA doesn't update after acceptance — probably caching, worse at rush hour."
 
-1. **aido (reason + structure).** You ask aido. It reads `okf/architecture.md#event-flow` and `okf/redis-caching-strategy.md#ttl-policy`, explains the likely cause, and writes `.aido/requests/driver-eta-stale.md` with an EARS block and `links.yaml: driver-eta-stale → [architecture#event-flow, redis-caching#ttl-policy]`. **Nothing in `.specd/` touched.**
+1. **aido (reason + structure).** You ask aido. It reads `okf/architecture.md#event-flow` and `okf/redis-caching-strategy.md#ttl-policy`, explains the likely cause, and writes `.aido/queries/driver-eta-stale.md` with an EARS block and `links.yaml: driver-eta-stale → [architecture#event-flow, redis-caching#ttl-policy]`. **Nothing in `.specd/` touched.**
 2. **Agent (analyze → reformat into specd's complete flow).** Loaded with the Bridge Skill, the agent reads the aido spec + the two OKF docs, runs `specd new driver-eta-stale`, and re-derives specd's own flow. Requirements come out as:
    - `R1` When the driver accepts a ride, the system shall publish a `RideAccepted` event.
    - `R2` When `RideAccepted` is handled, the system shall invalidate the cached ETA for that ride.
@@ -997,7 +997,7 @@ specd stays **100% OKF-agnostic**. No OKF ids in any specd artifact. aido re-der
 3. **Human ratchet.** You review and `specd approve requirements`. Then design → tasks (a small DAG: publish-event task, cache-invalidation task, integration-test task) → each gated.
 4. **Execute + evidence.** `specd next` → `specd verify` (exit 0, pinned to HEAD) → `specd complete-task`. specd will not mark done without the passing record. specd artifacts stay OKF-agnostic — no concept ids stamped anywhere.
 5. **Breadcrumb.** Agent appends to `BRIDGE.log`: `HANDOFF slug=driver-eta-stale specd_status=complete head=<sha> okf_hints=[architecture#event-flow, redis-caching#ttl-policy]`.
-6. **aido (witness + document).** aido takes its request-time `links.yaml` priors (`[architecture#event-flow, redis-caching#ttl-policy]`), reads `specd report driver-eta-stale --history --json` + the diff, runs a broad diff→OKF inference (optionally aided by the `okf_hints`), notices `redis-caching-strategy.md` changed behavior but the doc wasn't updated, and **flags / drafts** an update to `#ttl-policy` for your approval. It appends to `okf/log.md`. Docs stay first-class.
+6. **aido (witness + document).** aido takes its query-time `links.yaml` priors (`[architecture#event-flow, redis-caching#ttl-policy]`), reads `specd report driver-eta-stale --history --json` + the diff, runs a broad diff→OKF inference (optionally aided by the `okf_hints`), notices `redis-caching-strategy.md` changed behavior but the doc wasn't updated, and **flags / drafts** an update to `#ttl-policy` for your approval. It appends to `okf/log.md`. Docs stay first-class.
 
 Every hop was a file or `--json` CLI read. Neither binary called the other.
 

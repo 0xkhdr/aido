@@ -135,7 +135,7 @@ When two sources disagree, the higher one wins, always:
   source in a repo `skills/` file, referenced (never copied) from specd steering
   and from aido's coding-agent skill list. *Undecided:* which repo hosts it.
 - **OQ-6 — EARS grammar authority (§20.4).** *Default:* specd's `ears` gate is
-  the canonical dialect both sides target; aido's request EARS is not required
+  the canonical dialect both sides target; aido's query EARS is not required
   to satisfy it (`product.md` P10 format independence). *Undecided:* formal
   confirmation, and whether aido should optionally lint against that dialect.
 - **OQ-7 — Home of `docs/bridge-contract.md` (§20.5).** The blueprint references

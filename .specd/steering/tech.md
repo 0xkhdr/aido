@@ -80,14 +80,14 @@ Phosphor icons · Tauri bundler producing `.deb`.
   and never sent anywhere but the provider they belong to.
 - **T10 — Writes are atomic.** Every file aido writes under `.aido/` is written
   to a temp file in the same directory and renamed into place. A crash mid-write
-  must never leave a truncated request, config, or OKF document.
+  must never leave a truncated query, config, or OKF document.
 - **T11 — Append-only means append-only.** `witness/*.log`, `okf/log.md`, and
   repo-root `BRIDGE.log` are opened for append. Code that rewrites or truncates
   them is a defect.
 - **T12 — Core never imports Workspace.** Enforces `product.md` P9 at the module
   level. gRPC service definitions live in Core; the Rust and TypeScript clients
   are generated in Workspace.
-- **T13 — Public output formats are contracts.** `config.yaml` keys, request
+- **T13 — Public output formats are contracts.** `config.yaml` keys, query
   frontmatter, `links.yaml`, witness log lines, and any `--json` shape are
   versioned surfaces. A breaking change to one needs an ADR and a version bump,
   not a silent edit.

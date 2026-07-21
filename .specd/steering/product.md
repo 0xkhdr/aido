@@ -35,7 +35,7 @@ blockers.
 
 ## Thesis
 - **What aido is:** a documentary agent for software projects. It observes,
-  structures, and narrates what a project is, what was requested, and how it was
+  structures, and narrates what a project is, what was asked, and how it was
   understood, in one plain-text form that humans and coding agents both consume.
 - **Who it is for:** developers who already run a coding agent, plus the coding
   agents themselves as first-class readers.
@@ -59,7 +59,7 @@ blockers.
   conformance is a defect, not a warning.
 - **P4 — Any input, one pipeline.** Jira, Slack, voice transcript, email, pasted
   text all normalize to raw text and enter the same pipeline: parse intent →
-  read context → produce spec → store in `.aido/requests/`. A per-source
+  read context → produce spec → store in `.aido/queries/`. A per-source
   pipeline branch is refused; a per-source *normalizer* is the only allowed
   extension point.
 - **P5 — Aido suggests, never blocks.** Every aido output is informational.

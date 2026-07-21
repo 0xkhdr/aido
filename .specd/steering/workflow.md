@@ -48,7 +48,7 @@ commit conventions are stated defaults — see `reasoning.md` OQ-3.
 ## Branches
 
 - **W1 — Branch per spec.** `spec/<slug>`, using the same slug as the specd spec
-  and the aido request (`structure.md` S4). Never work a spec directly on `main`.
+  and the aido query (`structure.md` S4). Never work a spec directly on `main`.
 - **W2 — `main` is the tracked branch.** It is what aido's own witness would
   observe. Force-push to `main` is refused.
 
