@@ -1,14 +1,14 @@
 {
   "session_id": "aido-config",
-  "step": 9,
+  "step": 10,
   "wave": 0,
   "decision": "dispatch",
-  "mission_id": "aido-config.s9.T7",
+  "mission_id": "aido-config.s10.T7",
   "task_id": "T7",
   "mission": {
     "protocol_version": "1",
     "session_id": "aido-config",
-    "mission_id": "aido-config.s9.T7",
+    "mission_id": "aido-config.s10.T7",
     "spec_slug": "aido-config",
     "task_id": "T7",
     "attempt": 1,
@@ -26,16 +26,16 @@
     "config_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
     "palette_digest": "bae489ae737d2843e04cf152892272cd769cc9ef661f71eb67fb2227b6e3fed6",
     "policy_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
-    "subject_head": "71d0994bff84a028763630d637b05a1dd123e03c",
+    "subject_head": "ce068ece2ebbef1e53688417e96e450c784217d8",
     "route_class": "standard",
     "route_reason": "policy=1 risk=medium complexity=standard capabilities=read,write",
     "limits": {
       "max_attempts": 4,
       "timeout_seconds": 900
     },
-    "issued_at": "2026-07-21T20:45:38.331823325+03:00",
-    "expires_at": "2026-07-21T21:00:38.331823325+03:00",
+    "issued_at": "2026-07-21T21:01:12.418839628+03:00",
+    "expires_at": "2026-07-21T21:16:12.418839628+03:00",
     "status": "pending"
   },
-  "time": "2026-07-21T20:45:38.331823325+03:00"
+  "time": "2026-07-21T21:01:12.418839628+03:00"
 }

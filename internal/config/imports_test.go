@@ -1,0 +1,142 @@
+package config
+
+import (
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+// allowedModules is the entire non-stdlib import surface this package may have
+// (tech.md T1). Adding to it is a steering decision, not a code change.
+var allowedModules = map[string]bool{"gopkg.in/yaml.v3": true}
+
+// forbidden names imports that are banned outright regardless of origin:
+// net/http because this package makes no network call (invariant I5, T5), C
+// because the build must stay CGO_ENABLED=0 (R1.1, T3).
+var forbidden = map[string]string{
+	"net/http": "internal/config makes no network call (design.md I5)",
+	"C":        "the build must stay CGO_ENABLED=0 (R1.1)",
+}
+
+// disallowedImport returns the reason path may not be imported, or "".
+func disallowedImport(path string) string {
+	if reason, ok := forbidden[path]; ok {
+		return reason
+	}
+	// A stdlib path's first element never contains a dot; every module path's
+	// does (a domain).
+	first, _, _ := strings.Cut(path, "/")
+	if !strings.Contains(first, ".") {
+		return ""
+	}
+	if allowedModules[path] {
+		return ""
+	}
+	return "not in the tech.md T1 allowlist"
+}
+
+// imports parses every .go file in dir and returns each import path with the
+// file it appears in.
+func imports(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	found := map[string]string{}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+		for _, spec := range file.Imports {
+			value, err := strconv.Unquote(spec.Path.Value)
+			if err != nil {
+				t.Fatalf("%s: bad import literal %s", path, spec.Path.Value)
+			}
+			found[value] = e.Name()
+		}
+	}
+	if len(found) == 0 {
+		t.Fatalf("no imports found in %s; the check would pass vacuously", dir)
+	}
+	return found
+}
+
+// T1, T3, T5, T7: the package's real import set stays inside the allowlist.
+func TestPackageImportsStayInAllowlist(t *testing.T) {
+	for path, file := range imports(t, ".") {
+		if reason := disallowedImport(path); reason != "" {
+			t.Errorf("%s imports %q: %s", file, path, reason)
+		}
+	}
+}
+
+// The check is not vacuous: a disallowed import is actually caught.
+func TestDisallowedImportIsCaught(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"os", false},
+		{"encoding/json", false},
+		{"gopkg.in/yaml.v3", false},
+		{"net/http", true},
+		{"C", true},
+		{"github.com/spf13/viper", true},
+		{"github.com/zalando/go-keyring", true},
+	}
+	for _, tt := range tests {
+		got := disallowedImport(tt.path) != ""
+		if got != tt.want {
+			t.Errorf("disallowedImport(%q) disallowed = %t, want %t", tt.path, got, tt.want)
+		}
+	}
+}
+
+// The parser-driven half is not vacuous either: a file carrying a banned import
+// is detected by the same code path the real check uses.
+func TestParserCatchesBannedImportInSource(t *testing.T) {
+	dir := t.TempDir()
+	src := "package config\n\nimport (\n\t\"net/http\"\n\t\"github.com/spf13/viper\"\n)\n\nvar _ = http.StatusOK\nvar _ = viper.GetString\n"
+	if err := os.WriteFile(filepath.Join(dir, "bad.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var caught []string
+	for path := range imports(t, dir) {
+		if disallowedImport(path) != "" {
+			caught = append(caught, path)
+		}
+	}
+	if len(caught) != 2 {
+		t.Errorf("caught %v, want both net/http and github.com/spf13/viper", caught)
+	}
+}
+
+// Every ast import in the package is a plain path, so no blank or dot import
+// slips the allowlist by aliasing.
+func TestNoAliasedImportsHideOrigin(t *testing.T) {
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", nil, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pkg := range pkgs {
+		for name, file := range pkg.Files {
+			for _, spec := range file.Imports {
+				if spec.Name != nil && (spec.Name.Name == "." || spec.Name.Name == "_") {
+					t.Errorf("%s: %s import of %s hides its origin", name, spec.Name.Name, spec.Path.Value)
+				}
+			}
+		}
+	}
+}
