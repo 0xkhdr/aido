@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
+	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
@@ -167,9 +170,12 @@ func TestResolveKeyNeverLeaksKeyIntoErrors(t *testing.T) {
 // would do — and, worse, the test written to prove .git/info/exclude works
 // passed via the global rule instead, proving nothing.
 //
-// /etc/gitconfig cannot be redirected this way. It is left as a known gap; it
-// almost never sets core.excludesFile, and TestIgnoreSourcesAreIsolated below
-// fails loudly if the environment starts contributing patterns.
+// Since gitIgnores stopped consulting machine-global sources entirely (see
+// ignorePatterns), this is defence in depth rather than the load-bearing
+// isolation it once was — TestWriteSecretsIgnoresProtectionOutsideTheRepository
+// asserts that those sources are ignored on purpose, and
+// TestIgnoreSourcesAreIsolated is the negative control that fails loudly if
+// anything from the environment starts contributing patterns again.
 func isolateGitEnvironment(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
@@ -378,43 +384,74 @@ func TestWriteSecretsMissingAidoDirIsNotARefusal(t *testing.T) {
 	}
 }
 
-// AUDIT NN3, R4.6: $XDG_CONFIG_HOME/git/ignore is git's *default* global
-// excludes file, used only when core.excludesFile is unset. Applying both would
-// let aido call a path ignored that git tracks — the one direction this check
-// must never fail in.
-func TestGlobalExcludesFileDefersToCoreExcludesFile(t *testing.T) {
-	isolateGitEnvironment(t)
-	home := os.Getenv("HOME")
-	xdg := filepath.Join(home, ".config", "git")
-	if err := os.MkdirAll(xdg, 0o755); err != nil {
-		t.Fatal(err)
+// AUDIT NEW1, R4.6: protection that lives outside the repository does not
+// count. Every machine-global ignore source is set here to cover .aido/ — the
+// XDG default, an explicit core.excludesFile, and the repository-local
+// .git/config key that git also honours — and the write must still be refused,
+// because none of them protect the file in anyone else's clone.
+//
+// The previous version of this code consulted global sources and decided
+// whether core.excludesFile was set by reading ~/.gitconfig alone. Each case
+// below wrote the key to disk at a path git would happily add.
+func TestWriteSecretsIgnoresProtectionOutsideTheRepository(t *testing.T) {
+	cases := []struct {
+		name  string
+		setUp func(t *testing.T, home, projectDir string)
+	}{
+		{"XDG default ignore file", func(t *testing.T, home, _ string) {
+			writeFileAt(t, filepath.Join(home, ".config", "git", "ignore"), ".aido/\n")
+		}},
+		{"core.excludesFile in ~/.gitconfig", func(t *testing.T, home, _ string) {
+			writeFileAt(t, filepath.Join(home, "mine.ignore"), ".aido/\n")
+			writeFileAt(t, filepath.Join(home, ".gitconfig"), "[core]\n\texcludesfile = ~/mine.ignore\n")
+		}},
+		{"core.excludesFile in ~/.config/git/config", func(t *testing.T, home, _ string) {
+			writeFileAt(t, filepath.Join(home, "mine.ignore"), ".aido/\n")
+			writeFileAt(t, filepath.Join(home, ".config", "git", "config"), "[core]\n\texcludesfile = "+filepath.Join(home, "mine.ignore")+"\n")
+		}},
+		{"core.excludesFile in the repository's .git/config", func(t *testing.T, home, projectDir string) {
+			writeFileAt(t, filepath.Join(home, "mine.ignore"), ".aido/\n")
+			writeFileAt(t, filepath.Join(projectDir, ".git", "config"),
+				"[core]\n\trepositoryformatversion = 0\n\texcludesfile = "+filepath.Join(home, "mine.ignore")+"\n")
+		}},
+		{"core.excludesFile via an [include] directive", func(t *testing.T, home, _ string) {
+			writeFileAt(t, filepath.Join(home, "mine.ignore"), ".aido/\n")
+			writeFileAt(t, filepath.Join(home, "included.gitconfig"), "[core]\n\texcludesfile = "+filepath.Join(home, "mine.ignore")+"\n")
+			writeFileAt(t, filepath.Join(home, ".gitconfig"), "[include]\n\tpath = "+filepath.Join(home, "included.gitconfig")+"\n")
+		}},
 	}
-	// The XDG default says ignore .aido/; core.excludesFile points elsewhere and
-	// says nothing. git honours only the latter, so aido must too.
-	if err := os.WriteFile(filepath.Join(xdg, "ignore"), []byte(".aido/\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(home, "otherignore"), []byte("*.log\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".gitconfig"),
-		[]byte("[core]\n\texcludesfile = ~/otherignore\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			isolateGitEnvironment(t)
+			dir := t.TempDir()
+			if _, err := git.PlainInit(dir, false); err != nil {
+				t.Fatal(err)
+			}
+			r := NewRoot(dir)
+			if err := os.MkdirAll(r.String(), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			tt.setUp(t, os.Getenv("HOME"), dir)
 
-	if got := globalExcludesFile(); got != filepath.Join(home, "otherignore") {
-		t.Errorf("globalExcludesFile() = %q, want the configured core.excludesFile", got)
+			err := WriteSecrets(r, map[string]string{"openai_api_key": testKey})
+			if !errors.Is(err, ErrNotGitIgnored) {
+				t.Fatalf("err = %v, want ErrNotGitIgnored: only repository-scoped ignore rules count", err)
+			}
+			if _, statErr := os.Stat(r.SecretsPath()); !os.IsNotExist(statErr) {
+				t.Error("the key was written to disk despite the refusal")
+			}
+		})
 	}
-	dir := t.TempDir()
-	if _, err := git.PlainInit(dir, false); err != nil {
+}
+
+// writeFileAt writes body to path, creating parent directories.
+func writeFileAt(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	r := NewRoot(dir)
-	if err := os.MkdirAll(r.String(), 0o755); err != nil {
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
-	}
-	if err := WriteSecrets(r, map[string]string{"openai_api_key": testKey}); !errors.Is(err, ErrNotGitIgnored) {
-		t.Fatalf("err = %v, want ErrNotGitIgnored: the XDG default must not apply when core.excludesFile is set", err)
 	}
 }
 
@@ -484,6 +521,35 @@ func TestWriteSecretsInLinkedWorktree(t *testing.T) {
 	}
 	if err := WriteSecrets(r, map[string]string{"openai_api_key": testKey}); err != nil {
 		t.Fatalf("WriteSecrets() = %v, want nil: info/exclude from the common git dir applies", err)
+	}
+
+	// AUDIT NEW3: without an index in the linked worktree's own git directory,
+	// trackedInIndex takes its early return and this fixture proves nothing
+	// about per-worktree tracking. Write one naming the secrets file: tracking
+	// beats ignoring, so the same write must now be refused — and it must be
+	// *this* worktree's index that decides, not the main checkout's.
+	writeIndexEntry(t, gitDir, ".aido/.secrets.yaml")
+	if err := os.Remove(r.SecretsPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSecrets(r, map[string]string{"openai_api_key": testKey}); !errors.Is(err, ErrNotGitIgnored) {
+		t.Fatalf("err = %v, want ErrNotGitIgnored: the linked worktree's own index tracks the file", err)
+	}
+}
+
+// writeIndexEntry writes a git index into gitDir containing one entry.
+func writeIndexEntry(t *testing.T, gitDir, name string) {
+	t.Helper()
+	file, err := os.Create(filepath.Join(gitDir, "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	idx := &index.Index{Version: 2, Entries: []*index.Entry{{
+		Name: name, Mode: filemode.Regular, Hash: plumbing.NewHash(strings.Repeat("a", 40)),
+	}}}
+	if err := index.NewEncoder(file).Encode(idx); err != nil {
+		t.Fatal(err)
 	}
 }
 

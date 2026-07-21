@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/go-git/go-billy/v5/osfs"
-	gitconfig "github.com/go-git/go-git/v5/plumbing/format/config"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"gopkg.in/yaml.v3"
@@ -115,12 +114,12 @@ func WriteSecrets(r Root, secrets map[string]string) error {
 // root package, which pulls net/http and crypto/tls into this package's
 // dependency graph for a check that touches only local files.
 //
-// Every source git consults is consulted here, in git's own precedence order:
-// /etc/gitconfig's core.excludesFile, then the user's global excludes, then
-// .git/info/exclude, then the repository's .gitignore files. An earlier
-// version delegated to gitignore.ReadPatterns alone, which silently dropped
-// .git/info/exclude because go-git's worktree filesystem rejects a `.git` path
-// component and ReadPatterns discards that error.
+// The ignore sources consulted are the repository's own, in git's precedence
+// order: .git/info/exclude, then the .gitignore files under the worktree. See
+// ignorePatterns for why machine-global sources are excluded on purpose. An
+// earlier version delegated to gitignore.ReadPatterns alone, which silently
+// dropped .git/info/exclude because go-git's worktree filesystem rejects a
+// `.git` path component and ReadPatterns discards that error.
 //
 // Three cases deliberately report false — "nothing is protecting this path":
 //   - projectDir is not inside a repository with a worktree;
@@ -260,66 +259,36 @@ func trackedInIndex(gitDir, rel string) (bool, error) {
 	return false, nil
 }
 
-// ignorePatterns collects every ignore source git would consult, in ascending
-// precedence order (the matcher takes the last match).
+// ignorePatterns collects the ignore sources that belong to the repository, in
+// ascending precedence order (the matcher takes the last match).
+//
+// Machine-global sources — /etc/gitconfig, ~/.gitconfig, ~/.config/git/config,
+// $XDG_CONFIG_HOME/git/ignore — are deliberately NOT consulted, and this is a
+// security decision, not a simplification.
+//
+// R4.6 exists so a resolved key cannot be committed. A .secrets.yaml protected
+// only by the current machine's global ignore is not protected in anyone else's
+// clone, so treating it as safe answers the wrong question. Worse in practice:
+// git resolves core.excludesFile across system config, ~/.config/git/config,
+// ~/.gitconfig, the repository's own .git/config, worktree config, and
+// [include] directives. An earlier version read ~/.gitconfig alone to decide
+// whether that key was set, which made *failing to see a config file* the
+// trigger for applying a default git was not using — an audit demonstrated
+// three ordinary configurations (including a plain
+// `git config core.excludesFile <path>` inside the project) where WriteSecrets
+// returned nil with the key on disk at a path `git status` lists as untracked.
+//
+// Refusing to reimplement git's config resolution is the fix. What remains is
+// repository-scoped and cheap to read correctly.
 func ignorePatterns(worktree, gitDir string) ([]gitignore.Pattern, error) {
-	var patterns []gitignore.Pattern
-	patterns = append(patterns, parseExcludeFile(excludesFile(systemGitConfig, ""))...)
-	patterns = append(patterns, parseExcludeFile(globalExcludesFile())...)
 	// .git/info/exclude belongs to the *common* git directory: a linked worktree
 	// has its own index but shares info/exclude with the main checkout.
-	patterns = append(patterns, parseExcludeFile(filepath.Join(commonDir(gitDir), "info", "exclude"))...)
+	patterns := parseExcludeFile(filepath.Join(commonDir(gitDir), "info", "exclude"))
 	repo, err := gitignore.ReadPatterns(osfs.New(worktree), nil)
 	if err != nil {
 		return nil, fmt.Errorf("read ignore patterns under %s: %w", worktree, err)
 	}
 	return append(patterns, repo...), nil
-}
-
-// systemGitConfig is git's system-wide configuration file.
-const systemGitConfig = "/etc/gitconfig"
-
-// globalExcludesFile returns the user's global ignore file: core.excludesFile
-// from ~/.gitconfig when set, otherwise git's documented default of
-// $XDG_CONFIG_HOME/git/ignore (~/.config/git/ignore).
-//
-// The fallback is a *default*, not an addition. Applying both would make aido
-// ignore a path git tracks — the one direction this check must never fail in.
-func globalExcludesFile() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	if configured := excludesFile(filepath.Join(home, ".gitconfig"), home); configured != "" {
-		return configured
-	}
-	xdg := os.Getenv("XDG_CONFIG_HOME")
-	if xdg == "" {
-		xdg = filepath.Join(home, ".config")
-	}
-	return filepath.Join(xdg, "git", "ignore")
-}
-
-// excludesFile reads core.excludesFile from a git config file, or "" when the
-// file or the key is absent. home, when non-empty, expands a leading ~.
-func excludesFile(configPath, home string) string {
-	file, err := os.Open(configPath)
-	if err != nil {
-		return ""
-	}
-	defer file.Close()
-	raw := gitconfig.New()
-	if err := gitconfig.NewDecoder(file).Decode(raw); err != nil {
-		return ""
-	}
-	value := raw.Section("core").Options.Get("excludesfile")
-	if value == "" {
-		return ""
-	}
-	if home != "" && strings.HasPrefix(value, "~/") {
-		return filepath.Join(home, value[2:])
-	}
-	return value
 }
 
 // commonDir resolves $GIT_COMMON_DIR for gitDir. A linked worktree's git

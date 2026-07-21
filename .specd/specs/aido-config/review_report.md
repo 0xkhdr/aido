@@ -9,7 +9,7 @@ run `specd approve <spec> complete` with review.required enabled.
 
 - **Git HEAD:** 5cffbab12c21770a0f7a8f9cccc87e02fa4da958
 - **Reviewer:** pinky-auditor (subagent, unattended run 2026-07-21)
-- **Verdict:** needs-changes — see "Third pass at 6d1fa4b" at the end of this document; that subsection, not the original findings list, is the current call.
+- **Verdict:** needs-changes
 
 > Note: the scaffold recorded HEAD as `5cffbab` (T6). The tree actually audited is
 > `5168581` (T7, `test(config): enforce the tech.md T1 import allowlist`). The
@@ -408,6 +408,9 @@ network call; `coding_agent` is parsed and preserved but unused
 ---
 
 ## Re-audit at ddf549b (2026-07-21)
+
+> The current call is the **Fourth pass at d90efc4** subsection at the end of
+> this document, not the original findings list above it.
 
 Second pass by the same auditor, against `ddf549b`, on the three commits that
 claim to close the findings above (`aa3dd69`, `ddf549b`, and the two `chore(specd)`
@@ -1009,3 +1012,205 @@ re-audit has been about.
 Standing note, unchanged from the second pass: `6d1fa4b`, `ddf549b`, and
 `aa3dd69` are all out of band, no task marker claims them, and the `**Git HEAD:**`
 field above still reads `5cffbab`.
+
+### Fourth pass at d90efc4
+
+Baseline: `go build ./...`, `go vet ./...`, and `CGO_ENABLED=0 go test ./...` all
+pass. `internal/config` 86.5%, `cmd/aido` 84.8%. `go list -deps ./internal/config`
+= 112 packages with no `net`, `net/http`, or `crypto/tls`.
+
+Environment discipline this pass: every probe replaced `HOME` and
+`XDG_CONFIG_HOME` by filtering the parent environment before appending, and ran
+entirely under `/tmp`. Nothing was written under `$HOME`, and no git write
+command was issued. For the record, the earlier damage was a probe writing
+`~/.gitconfig` through the duplicate-`HOME` bug; I have not run `git commit`,
+`git push`, or any history-rewriting command in any pass of this audit.
+
+#### Probe matrix at d90efc4
+
+`XX` marks a divergence in the **unsafe** direction — aido says ignored, git says
+tracked.
+
+```
+   root .gitignore .aido/                       aido=true  git=ignored
+   info/exclude only                            aido=true  git=ignored
+   info/exclude CRLF                            aido=true  git=ignored
+   subdir .aido/.gitignore                      aido=true  git=ignored
+   XDG ignore, core.excludesFile unset          aido=true  git=ignored
+   core.excludesFile in ~/.gitconfig (tilde)    aido=true  git=ignored
+   NN3: excludesFile set + XDG ignore present   aido=false git=not-ignored   FIXED
+   tracked via `git add -f` despite ignore      aido=false git=not-ignored
+   NN1: .aido/ does not exist yet               aido=true  git=ignored       FIXED
+   symlinked project path                       aido=true  git=ignored
+   NN5: REAL `git worktree add`, info/exclude   aido=true  git=ignored       FIXED
+   NN5b: linked worktree, tracked in ITS index  aido=false git=not-ignored   FIXED
+   not a repository                             aido=false git=n/a
+   dir inside a bare repo                       aido=false git=n/a
+!! NN4: excludesFile in ~/.config/git/config    aido=false git=ignored
+!! N6:  negation inside an excluded directory   aido=false git=ignored
+   NN7: stray empty .git directory              aido=true  git=fatal
+XX NEW: excludesFile in ~/.config/git/config
+        + XDG ignore present                    aido=true  git=not-ignored   NEW1
+XX NEW: excludesFile in the repo's .git/config  aido=true  git=not-ignored   NEW1
+XX NEW: excludesFile via [include] path         aido=true  git=not-ignored   NEW1
+```
+
+Fourteen of twenty agree, up from eleven of seventeen. All four cases the
+operator's rulings targeted are genuinely fixed and I verified NN5 against a real
+`git worktree add`, not only against the hand-built fixture. But three cases now
+diverge in the direction that matters, and they are the direct consequence of the
+NN3 fix.
+
+#### Disposition of NN1–NN9
+
+| # | disposition | note |
+|---|---|---|
+| NN1 — `.aido/` absent → false refusal | **resolved** | `resolveExisting` (`secrets.go:218-239`) walks to the deepest existing ancestor and re-appends the missing tail. Probed: `.aido/` absent now returns `ignored=true` and `WriteSecrets` fails wrapping `fs.ErrNotExist`. `TestWriteSecretsMissingAidoDirIsNotARefusal` asserts both halves, including the negative (`!errors.Is(err, ErrNotGitIgnored)`). This is the right shape for a regression test. |
+| NN2 — non-hermetic suite | **resolved** | `isolateGitEnvironment` (`secrets_test.go:173`) and `TestIgnoreSourcesAreIsolated` (`:335`). The negative control is the correct instrument: it fails if anything leaks in from outside, which is exactly the property that was missing. The `/etc/gitconfig` gap is real (go-git ignores `GIT_CONFIG_NOSYSTEM`) and correctly documented rather than papered over. |
+| NN3 — XDG applied as an addition | **partially resolved — and it regressed into a wider unsafe class** | The specific case is fixed and asserted (`TestGlobalExcludesFileDefersToCoreExcludesFile`). But making the XDG file conditional means aido now has to answer "is `core.excludesFile` set?", and it answers from one config file out of five. See NEW1. |
+| NN4 — `core.excludesFile` in `~/.config/git/config` | **still open, and promoted** | Last pass this was a benign false refusal. It is now one of three demonstrated **leaks**, because the unseen setting activates a fallback git is not using. |
+| NN5 — linked-worktree `info/exclude` | **resolved** | `commonDir` (`secrets.go:328-340`) follows `commondir`, relative or absolute. Verified against a real `git worktree add`: `info/exclude` from the main checkout applies, and a file tracked in the *linked* worktree's own index is still correctly refused. |
+| NN6 — import allowlist by prefix | **resolved** | `TestConfigPackageHasNoNetworkDependency` (`cmd/aido/config_show_test.go:185`) asserts the dependency closure, which is what I5 actually claims, and `forbiddenSubtrees` (`imports_test.go:30`) denies `plumbing/transport` at the import site. Belt and braces, and the belt is the right one. Placing it in `cmd/aido` to respect the `os/exec` ban is the correct call. |
+| NN7 — stray `.git` accepted | **still open** | Unchanged, still nil consequence. |
+| NN8 — coverage of hand-rolled code | **partially resolved** | 85.0% → 86.5%, and the two blocks that were wrong last pass are now covered. Twenty-five blocks in `secrets.go` remain at zero, and `globalExcludesFile` (77.8%) and `excludesFile` (76.9%) are the two lowest-covered new functions — which is where NEW1 lives. |
+| NN9 — R1.2 evasion via `config.DirName` | **resolved** | Referencing `DirName` outside `internal/config` is now itself the finding (`config_show_test.go:110`), which catches `config.DirName + "/x"` without needing `go/types`. The owner exemption compares path components. Deriving the needle from `filepath.Base(string(config.NewRoot("x")))` to avoid self-flagging is neat. |
+
+Numbering note: my third pass used `N6` for the negation divergence and `NN6` for
+the import allowlist; the fourth-pass request called the negation finding `NN6`.
+The negation divergence is **N6** and is still open. `NN6` (allowlist) is closed.
+
+#### NEW1 — MAJOR, leaks a key. `globalExcludesFile` infers "is `core.excludesFile` set?" from one config file out of five
+
+`internal/config/secrets.go:288-301`
+
+`globalExcludesFile` reads `core.excludesFile` from `$HOME/.gitconfig` and, when
+it finds nothing, returns `$XDG_CONFIG_HOME/git/ignore` as git's documented
+default. Git resolves that key across **system config, `$XDG_CONFIG_HOME/git/config`,
+`~/.gitconfig`, the repository's `.git/config`, the per-worktree config, and any
+`[include]`/`[includeIf]` those pull in** — last writer wins. Any setting aido
+cannot see leaves it believing the key is unset, so it applies a default file git
+is not using.
+
+Not a theoretical ordering argument. End-to-end, `WriteSecrets` returning `nil`
+and the key landing on disk at a path `git status --untracked-files=all` lists —
+i.e. one `git add .` from being committed:
+
+```
+core.excludesFile in ~/.config/git/config    WriteSecrets=<nil> keyOnDisk=true gitWouldAddIt=true
+core.excludesFile in the repo's .git/config  WriteSecrets=<nil> keyOnDisk=true gitWouldAddIt=true
+core.excludesFile via [include] path         WriteSecrets=<nil> keyOnDisk=true gitWouldAddIt=true
+```
+
+The middle one is the ordinary case: `git config core.excludesFile <path>` run
+inside a project is a normal thing to do, and it silently disarms the guard.
+
+This is worse than what it replaced. At `6d1fa4b` the XDG file was applied
+unconditionally — one unsafe vector. Making it conditional on incomplete
+information turned one vector into at least three, because now *failing to read a
+config file* is itself the trigger. Every gap in aido's config resolution is now
+a leak rather than a missed pattern.
+
+Two ways out, and I would take the second.
+
+1. **Resolve the key properly**: read system, XDG, `~/.gitconfig`, `.git/config`,
+   and worktree config in git's order, following `[include]`. That is
+   reimplementing `git config --get` and it will keep growing this exact class of
+   bug. `[includeIf]` alone (gitdir, onbranch, hasconfig conditions) is more logic
+   than the rest of this package.
+2. **Delete the global sources entirely.** `ignorePatterns` should consult
+   `.git/info/exclude` and the repository's `.gitignore` files, and nothing else.
+   This is smaller code, it fails safe in every direction by construction, and it
+   is the better *product* answer: a `.secrets.yaml` protected only by the current
+   user's machine-global ignore rule is not protected for anyone who clones the
+   repository. R4.6 exists so the key cannot be committed — by anyone, from any
+   checkout. A protection that does not travel with the repository does not
+   satisfy that, and refusing until the rule is written into `.gitignore` or
+   `info/exclude` is the correct refusal, not an inconvenience.
+
+Option 2 deletes `globalExcludesFile`, `excludesFile`, `systemGitConfig`, the
+`/etc/gitconfig` gap NN2 had to document, NN4, NEW1, and NEW2 in one edit, and
+shrinks `ignorePatterns` to four lines. If the operator wants global rules
+honoured anyway, that is a product decision that needs recording — and it still
+needs option 1 done properly to be safe.
+
+#### NEW2 — MINOR. Residual `core.excludesFile` parsing gaps
+
+`internal/config/secrets.go:305-323`
+
+Probed. Case-insensitivity is fine — `excludesFile` matches `excludesFile`,
+`excludesfile`, and `[CORE]`, because go-git's config lookup folds case. Three
+gaps remain:
+
+- `excludesFile(systemGitConfig, "")` passes `home = ""`, so a `~/…` value in
+  `/etc/gitconfig` is returned unexpanded (`"~/mine"`) and silently opens nothing.
+  Safe direction.
+- git's `%(prefix)/…` form is unhandled. Safe direction.
+- An explicitly empty `excludesfile =` is treated as unset, so the XDG default
+  applies; git treats an empty value as "no excludes file". Same unsafe class as
+  NEW1.
+
+All three vanish under NEW1's option 2.
+
+#### NEW3 — MINOR. The linked-worktree fixture is thinner than it looks
+
+`internal/config/secrets_test.go:437-476`
+
+The hand-built worktree writes `commondir`, `gitdir`, and `HEAD` but no `index`,
+so `trackedInIndex` takes its "no index yet" early return and the per-worktree
+index path — the half of NN5 that is genuinely subtle — is never exercised by the
+test. The behaviour is nonetheless correct: I verified it separately against a
+real `git worktree add` with the file tracked in the linked worktree's own index,
+and aido refuses correctly. So the code is right and the fixture under-claims.
+Faithful enough for the assertion it makes; worth one `os.WriteFile` of an empty
+index or a `t.Skip`-guarded real-git variant if you want the test to carry it.
+
+#### NEW4 — MINOR. The `DirName` rule matches on selector name only
+
+`cmd/aido/config_show_test.go:110`
+
+`sel.Sel.Name == "DirName"` flags any selector so named, from any package. A
+future `flags.DirName` or `osutil.DirName` would be reported as an R1.2 violation
+it has nothing to do with. Checking the receiver identifier resolves to the
+config import is a two-line fix; false positives on a rule that fires at build
+time train people to work around it.
+
+#### Is criterion 4.6 demonstrably satisfied at d90efc4?
+
+**No.** I am not able to certify it, and I would give the same answer if someone
+else had written the code.
+
+R4.6 requires that a key be written only to a path *confirmed git-ignored first*.
+At `d90efc4` there are three reproducible configurations — one of them the
+everyday `git config core.excludesFile <path>` inside a project — in which
+`WriteSecrets` returns `nil`, writes the key at mode 0600, and leaves it at a path
+`git status` reports as untracked-and-visible. The guard does not hold. The
+mechanism is demonstrated above end to end, not inferred.
+
+Everything else R4.6 needs is now in place, and I want that on the record because
+the gap is narrow and specific:
+
+- the refusal is a refusal, not a warning, and it is tested in both directions;
+- tracking beats ignoring, verified in a normal repository and in a linked
+  worktree's own index;
+- the first-run case is no longer misreported as a security refusal;
+- repository-local sources — `.gitignore` at any depth and `info/exclude`,
+  including through `$GIT_COMMON_DIR` — agree with `git check-ignore` in every
+  case I probed;
+- the tests are hermetic, with a negative control that fails if they stop being;
+- nothing requires the `git` binary at runtime, and the dependency closure is
+  clean.
+
+What is missing is exactly one thing: **the global-excludes path can report
+`ignored` for a path git tracks.** Close NEW1 — by my reading, by deleting the
+global sources rather than by resolving them — and add one test asserting that
+`WriteSecrets` refuses when the only rule protecting the path comes from outside
+the repository. At that point I will record 4.6 as demonstrated, and N6, NN4,
+NN7, NEW2, NEW3, and NEW4 will all be non-blocking residue on a criterion I would
+sign.
+
+Two process facts unchanged and still standing: `d90efc4`, `6d1fa4b`, `ddf549b`,
+and `aa3dd69` are all out of band with no task marker claiming them, and the
+`**Git HEAD:**` field at the top of this document still reads `5cffbab`. F7 and
+F8 have now survived four passes — `design.md` still specifies no interface, no
+failure mode, and no verification for R4.6, which is the fourth consecutive pass
+in which this requirement has been redesigned at implementation time.

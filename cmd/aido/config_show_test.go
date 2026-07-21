@@ -107,9 +107,13 @@ func TestNoHandBuiltAidoPaths(t *testing.T) {
 			// adversarial. `config.DirName + "/config.yaml"` is what someone
 			// half-remembering R1.2 writes, and it is not a string constant, so
 			// referencing DirName at all outside its owner is the signal.
+			// Qualified by package, not by selector name alone: a future
+			// flags.DirName is somebody else's constant.
 			if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == "DirName" {
-				t.Errorf("%s: %s references config.DirName; build the path with config.NewRoot and its constructors instead",
-					fset.Position(sel.Pos()), rel)
+				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "config" {
+					t.Errorf("%s: %s references config.DirName; build the path with config.NewRoot and its constructors instead",
+						fset.Position(sel.Pos()), rel)
+				}
 				return true
 			}
 			value, ok := stringValue(n)
