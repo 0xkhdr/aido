@@ -1040,3 +1040,44 @@ stated plainly and stays a proposal — never a self-applied change.
   report when a task's declared file does not exist at completion time — that
   single check would have caught the mismatch before the auditor ran.
 - **Status:** open
+
+### 2026-07-21 — friction — `executing → verifying` approves with tasks still pending (auto-approval finding)
+
+- **Context:** spec `aido-config`, 6 of 8 tasks complete, T7 (`imports_test.go`)
+  and T8 (the auditor's review) both `pending`, no evidence recorded for either.
+- **Expected:** a refusal naming the incomplete tasks. The transition is called
+  *executing → verifying*; leaving execution while execution is unfinished is
+  the one thing it ought to gate.
+- **Actual:**
+  ```
+  $ specd check aido-config          # exit 0, no output
+  $ specd approve aido-config
+  approved aido-config: executing → verifying
+  $ specd status aido-config
+  tasks: 6 complete, 0 running, 0 blocked, 2 pending, 8 total
+  ```
+- **What makes this the sharper version of the earlier design-gate finding:**
+  the *next* gate, `verifying → complete`, refuses precisely and usefully — it
+  names all 25 criteria lacking a passing record and the unfilled review verdict.
+  So the machinery for a specific, actionable readiness refusal exists and is
+  wired up one step later. The `executing` exit gate simply does not consult task
+  state.
+- **Aggravating:** `specd check` reports nothing at all here (exit 0, silent),
+  and `--guide` listed the transition as the legal next action. Every signal
+  available to an unattended driver said "go".
+- **Root cause:** harness gap — the executing-phase readiness gate omits a
+  task-completion check.
+- **Recommendation:** (a) refuse `executing → verifying` while any task is
+  `pending`, `running`, or `blocked`, and name them, in the same style the
+  `complete` gate already uses; (b) if leaving execution early is ever
+  legitimate, make it an explicit human-acknowledged exception rather than the
+  silent default; (c) make `specd check` print the readiness summary it already
+  computes instead of exiting 0 in silence — the silence is what makes a clean
+  check look like an endorsement.
+- **Blast radius here:** contained. `complete-task` stays legal in the verify
+  phase, so T7 and T8 can still close. But the on-disk history now says this
+  spec entered verification before its audit task existed, and no verb undoes an
+  approval.
+- **Status:** open — **the run's most valuable finding**, since the operator's
+  standing instruction was to surface exactly this: a gate letting through what
+  a human would have rejected.

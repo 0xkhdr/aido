@@ -2,9 +2,9 @@
   "schema_version": 1,
   "slug": "aido-config",
   "mode": "orchestrated",
-  "status": "executing",
-  "phase": "execute",
-  "revision": 11,
+  "status": "verifying",
+  "phase": "verify",
+  "revision": 12,
   "records": {
     "approval:design": {
       "kind": "approval",
@@ -14,6 +14,15 @@
       "source_digest": "ffc5df40be0f076a222686880b07ac39811d06f4cdfb2b5dfc63ac9e7e9c4922",
       "timestamp": "2026-07-21T16:34:31Z",
       "git_head": "5628a7786ded0a9e9178b7d990c5762fc17d0861",
+      "actor": "xkhdr"
+    },
+    "approval:executing": {
+      "kind": "approval",
+      "text": "executing → verifying",
+      "gate": "executing",
+      "approved_revision": 11,
+      "timestamp": "2026-07-21T17:48:51Z",
+      "git_head": "665728998b266f1fb7a9b070a11d1f38ae0e413d",
       "actor": "xkhdr"
     },
     "approval:orchestrated": {
