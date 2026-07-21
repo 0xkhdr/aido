@@ -49,7 +49,12 @@ func TestValidateSingleFailures(t *testing.T) {
 		{"missing project", func(c *Config) { c.Project = "" }, "project is required"},
 		{"missing tracked_branch", func(c *Config) { c.TrackedBranch = "" }, "tracked_branch is required"},
 		{"default_provider not in providers", func(c *Config) { c.LLM.DefaultProvider = "openai" }, "openai"},
-		{"unsupported provider", func(c *Config) { c.LLM.Providers["deepthought"] = Provider{} }, "deepthought"},
+		{"unsupported provider", func(c *Config) {
+			c.LLM.Providers["deepthought"] = Provider{APIKeySource: "env:DEEPTHOUGHT_KEY"}
+		}, "deepthought"},
+		{"provider with neither key source nor base url", func(c *Config) {
+			c.LLM.Providers["ollama"] = Provider{}
+		}, "ollama"},
 		{"required_docs outside okf/", func(c *Config) { c.RequiredDocs = []string{"docs/architecture.md"} }, "docs/architecture.md"},
 	}
 	for _, tt := range tests {
@@ -107,7 +112,10 @@ func TestValidateAcceptsEverySupportedProvider(t *testing.T) {
 	c := valid()
 	c.LLM.Providers = map[string]Provider{}
 	for _, name := range SupportedProviders {
-		c.LLM.Providers[name] = Provider{}
+		// Each entry carries a key source: an entry with neither that nor a
+		// base_url is itself a violation, so building them empty would have
+		// pinned the wrong behaviour shut.
+		c.LLM.Providers[name] = Provider{APIKeySource: "env:" + strings.ToUpper(name) + "_API_KEY"}
 	}
 	if err := c.Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil for the supported set %v", err, SupportedProviders)

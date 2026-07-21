@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,6 +101,84 @@ func TestWriteFileFailureLeavesDestinationIntact(t *testing.T) {
 	}
 	if names := entries(t, dir); len(names) != 1 {
 		t.Errorf("directory holds %v, want only config.yaml (no temp file left)", names)
+	}
+}
+
+// R5.2, R5.3: a failure *after* the temp file exists but *before* the rename
+// removes the temp file and leaves the destination byte-for-byte unchanged.
+//
+// This is the path the earlier permission-based test only appeared to cover: it
+// failed at os.CreateTemp, so no temp file was ever created and the cleanup
+// never ran. Here the fsync seam fails, so the temp file provably exists first.
+func TestWriteFilePreRenameFailureRemovesTemp(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	original := []byte("project: taxi\ntracked_branch: main\n")
+	if err := os.WriteFile(path, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var tempSeen string
+	real := fsync
+	fsync = func(f *os.File) error {
+		tempSeen = f.Name() // proves a temp file existed at failure time
+		return errors.New("simulated fsync failure")
+	}
+	t.Cleanup(func() { fsync = real })
+
+	err := WriteFile(path, []byte("clobbered\n"), 0o644)
+	if err == nil {
+		t.Fatal("WriteFile() = nil, want the injected failure")
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Errorf("error %q does not name the destination", err)
+	}
+	if tempSeen == "" {
+		t.Fatal("fsync was never reached; the test proves nothing about cleanup")
+	}
+	if tempSeen == path {
+		t.Fatal("the file being synced was the destination itself, not a temp file")
+	}
+	if _, statErr := os.Stat(tempSeen); !os.IsNotExist(statErr) {
+		t.Errorf("temp file %s survived the failure", tempSeen)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(original) {
+		t.Errorf("destination = %q, want the original bytes %q", got, original)
+	}
+	if names := entries(t, dir); len(names) != 1 {
+		t.Errorf("directory holds %v, want only config.yaml", names)
+	}
+}
+
+// R5.1: the temp-then-rename mechanism itself, not just its outcome. A plain
+// truncating write would pass every other test in this file; it fails this one,
+// because it never creates a second file in the directory.
+func TestWriteFileGoesThroughATempFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var duringWrite []string
+	real := fsync
+	fsync = func(f *os.File) error {
+		duringWrite = entries(t, dir)
+		return f.Sync()
+	}
+	t.Cleanup(func() { fsync = real })
+
+	if err := WriteFile(path, []byte("new\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() = %v, want nil", err)
+	}
+	if len(duringWrite) != 2 {
+		t.Errorf("directory held %v mid-write, want the destination plus a temp file", duringWrite)
+	}
+	if names := entries(t, dir); len(names) != 1 {
+		t.Errorf("directory holds %v after the write, want only config.yaml", names)
 	}
 }
 

@@ -7,6 +7,14 @@ import (
 	"path/filepath"
 )
 
+// fsync is a seam, not a feature. The failures between "temp file created" and
+// "renamed into place" are the ones R5.2 and R5.3 are about, and none of them
+// (a failing write, chmod, or fsync) can be induced from outside the process on
+// a healthy filesystem. Overriding this in a test is the only way to prove the
+// cleanup path runs rather than assuming it — an audit found that path at zero
+// coverage, with the assertion that covered it passing vacuously.
+var fsync = func(f *os.File) error { return f.Sync() }
+
 // WriteFile writes data to path atomically: a temporary file in the *same
 // directory*, fsynced, then renamed into place (R5.1, invariant I2). A reader
 // sees either the whole old file or the whole new one, never a truncated one.
@@ -39,7 +47,7 @@ func WriteFile(path string, data []byte, perm fs.FileMode) error {
 	if err := f.Chmod(perm); err != nil {
 		return abort("chmod", err)
 	}
-	if err := f.Sync(); err != nil {
+	if err := fsync(f); err != nil {
 		return abort("fsync", err)
 	}
 	if err := f.Close(); err != nil {

@@ -46,6 +46,13 @@ func (c *Config) Validate() error {
 		if !supported(name) {
 			problems = append(problems, "provider "+name+" is not supported")
 		}
+		// requirements.md, "Edge and failure behavior": a provider entry with
+		// neither key source nor base URL configures nothing and cannot be
+		// reached or authenticated. An empty entry is a mistake, not a default.
+		p := c.LLM.Providers[name]
+		if p.APIKeySource == "" && p.BaseURL == "" {
+			problems = append(problems, "provider "+name+" declares neither api_key_source nor base_url")
+		}
 	}
 	if p := c.LLM.DefaultProvider; p != "" {
 		if _, ok := c.LLM.Providers[p]; !ok {

@@ -2,11 +2,17 @@ package main
 
 import (
 	"bytes"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/0xkhdr/aido/internal/config"
 )
 
 const secretKey = "sk-must-never-be-printed-0123456789"
@@ -34,19 +40,57 @@ auto_sync: false
 func projectDir(t *testing.T, configBody string) string {
 	t.Helper()
 	dir := t.TempDir()
-	aido := filepath.Join(dir, ".aido")
-	if err := os.MkdirAll(aido, 0o755); err != nil {
+	// R1.2: even the fixture obtains .aido/ paths from the constructors. Joining
+	// them here would be the same violation the test below scans for.
+	root := config.NewRoot(dir)
+	if err := os.MkdirAll(root.String(), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if configBody != "" {
-		if err := os.WriteFile(filepath.Join(aido, "config.yaml"), []byte(configBody), 0o644); err != nil {
+		if err := os.WriteFile(root.ConfigPath(), []byte(configBody), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(aido, ".secrets.yaml"), []byte("openrouter_api_key: "+secretKey+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(root.SecretsPath(), []byte("openrouter_api_key: "+secretKey+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+// R1.2: no package outside internal/config builds a .aido/ path from string
+// parts. internal/config's import-allowlist test cannot see this package, so
+// the rule needs its own check on this side of the boundary — an audit found
+// this file itself in violation, with nothing to catch it.
+func TestNoHandBuiltAidoPaths(t *testing.T) {
+	// Assembled rather than written out, so this test does not match itself.
+	needle := "." + config.DirName[1:]
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, pkg := range pkgs {
+		for _, file := range pkg.Files {
+			ast.Inspect(file, func(n ast.Node) bool {
+				lit, ok := n.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					return true
+				}
+				value, err := strconv.Unquote(lit.Value)
+				if err != nil || !strings.Contains(value, needle) {
+					return true
+				}
+				found++
+				t.Errorf("%s builds a %s path from a string literal %q; use config.NewRoot and its constructors",
+					fset.Position(lit.Pos()), needle, value)
+				return true
+			})
+		}
+	}
+	if found == 0 && testing.Verbose() {
+		t.Logf("no hand-built %s paths in package main", needle)
+	}
 }
 
 // show runs `config show` against dir and returns exit code, stdout, stderr.
