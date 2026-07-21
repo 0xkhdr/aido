@@ -10,3 +10,4 @@
 {"envelope_version":"v1","run_id":"5f3518009871d1d0","spec_id":"aido-config","task_id":"T4","attempt":1,"started_at":"2026-07-21T17:27:11Z","git_head":"3eed0fcbd52b819ec675b9eeb93f3ffdb84a3476","actor":"xkhdr","telemetry_source":"worker"}
 {"envelope_version":"v1","run_id":"5f3518009871d1d0","spec_id":"aido-config","task_id":"T4","attempt":2,"started_at":"2026-07-21T17:43:16Z","git_head":"07fe94275f261442657467f483c67fb20576c71d","actor":"xkhdr","telemetry_source":"worker"}
 {"envelope_version":"v1","run_id":"e493f83126419f09","spec_id":"aido-config","task_id":"T5","attempt":1,"started_at":"2026-07-21T17:44:42Z","git_head":"b9f13ed8ffa92a4829afaf9f49e5985387eced60","actor":"xkhdr","telemetry_source":"worker"}
+{"envelope_version":"v1","run_id":"acad79bff51c5867","spec_id":"aido-config","task_id":"T6","attempt":1,"started_at":"2026-07-21T17:46:40Z","git_head":"71d0994bff84a028763630d637b05a1dd123e03c","actor":"xkhdr","telemetry_source":"worker"}
