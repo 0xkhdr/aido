@@ -36,8 +36,17 @@ orchestration:
   model: ""
 
 # Bounded context manifest per task. Raise only if manifests get truncated.
+#
+# Raised 12000 -> 24000 on 2026-07-21 by operator ruling. T5's manifest
+# (internal/config/secrets.go + secrets_test.go + design.md) grew past the old
+# budget while closing a security audit: eleven regression tests and a rewritten
+# git-ignore check. The gate fires at manifest-build time against current file
+# sizes with no notion that T5 is complete and will never be dispatched again,
+# and both remedies it names — "decompose the task", "narrow declared files" —
+# are edits to an approved tasks.md behind a human gate. This is the operator
+# knob the blocker does not mention. See SPECD-FEEDBACK.md and APPROVALS.md.
 context:
-  max_tokens: 12000
+  max_tokens: 24000
 
 # Provider-neutral routing. Core chooses a capability class only; adapters map
 # it to a provider/model. Zero limits are unbounded.

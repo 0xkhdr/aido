@@ -575,3 +575,58 @@ func TestWriteSecretsRefusesOutsideRepository(t *testing.T) {
 		t.Fatalf("err = %v, want errors.Is(err, ErrNotGitIgnored)", err)
 	}
 }
+
+// AUDIT F6: an api_key_source that is neither "none" nor "env:NAME" used to
+// fall through silently — the environment was skipped and the resulting error
+// listed sources that had not been consulted. It is now a named refusal.
+func TestResolveKeyUnsupportedSourceForm(t *testing.T) {
+	for _, source := range []string{"keyring", "env", "ENV:OPENAI_API_KEY", "file:/etc/keys"} {
+		t.Run(source, func(t *testing.T) {
+			r := project(t, "openai_api_key: "+testKey+"\n")
+			c := withProvider("openai", source)
+			got, err := c.ResolveKey(r, "openai")
+			if !errors.Is(err, ErrUnsupportedKeySource) {
+				t.Fatalf("err = %v, want ErrUnsupportedKeySource", err)
+			}
+			if errors.Is(err, ErrKeyNotFound) {
+				t.Error("an unreadable source is not the same condition as a key that is absent")
+			}
+			if got != "" {
+				t.Errorf("key = %q, want empty", got)
+			}
+			if !strings.Contains(err.Error(), "openai") {
+				t.Errorf("error %q does not name the provider", err)
+			}
+		})
+	}
+}
+
+// I1, R4.5: a user who pastes a real key into api_key_source instead of a
+// reference must not have it echoed back through the error. Checked with a
+// distinctive value, since a short form like "env" appears in the message's own
+// description of the expected syntax.
+func TestResolveKeyUnsupportedSourceNeverEchoesTheValue(t *testing.T) {
+	r := project(t, "")
+	c := withProvider("openai", testKey)
+	_, err := c.ResolveKey(r, "openai")
+	if !errors.Is(err, ErrUnsupportedKeySource) {
+		t.Fatalf("err = %v, want ErrUnsupportedKeySource", err)
+	}
+	if strings.Contains(err.Error(), testKey) {
+		t.Errorf("error %q echoes the api_key_source value, which may be a pasted key", err)
+	}
+}
+
+// An empty api_key_source is not an error: the secrets file is simply the only
+// place left to look.
+func TestResolveKeyEmptySourceUsesSecretsFile(t *testing.T) {
+	r := project(t, "openai_api_key: "+testKey+"\n")
+	c := withProvider("openai", "")
+	got, err := c.ResolveKey(r, "openai")
+	if err != nil {
+		t.Fatalf("ResolveKey() error = %v, want nil", err)
+	}
+	if got != testKey {
+		t.Errorf("key = %q, want the file value", got)
+	}
+}

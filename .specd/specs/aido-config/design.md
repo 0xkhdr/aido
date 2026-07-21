@@ -4,7 +4,7 @@
 - disposition: accepted
 - owner: unassigned (unattended run; see APPROVALS.md)
 - boundaries: `internal/config` owns `.aido/` path construction, config and secrets parsing, validation, key resolution, and atomic writes; `cmd/aido` owns wiring and the `config show` output only. Creating `.aido/`, OKF parsing, query handling, LLM calls, keyring, and interactive prompts are excluded. See Boundaries.
-- interfaces: Go `package config` exports `Root` with pure path constructors, `Load`, `Config.Validate`, `Config.ResolveKey`, `ErrKeyNotFound`, `ValidationError`, and `WriteFile`; the CLI exposes `aido config show`. Consumed on-disk contracts are `.aido/config.yaml` and `.aido/.secrets.yaml` per blueprint §4.3–§4.4. See Interfaces.
+- interfaces: Go `package config` exports `Root` with pure path constructors, `DirName`, `Load`, `Config.Validate`, `Config.ResolveKey`, `WriteSecrets`, `SupportedProviders`, `ErrKeyNotFound`, `ErrUnsupportedKeySource`, `ErrNotGitIgnored`, `ValidationError`, and `WriteFile`; the CLI exposes `aido config show`. Consumed on-disk contracts are `.aido/config.yaml` and `.aido/.secrets.yaml` per blueprint §4.3–§4.4. See Interfaces.
 - invariants: I1 a resolved key never enters an error, log, or printed line; I2 no `.aido/` file is truncated in place, every write is temp-plus-rename; I3 path construction performs no I/O; I4 validation is total and reports every problem at once; I5 no network or LLM call in this package; I6 `cmd/aido` holds no validity decision. See Invariants.
 - failure: missing config yields a wrapped `fs.ErrNotExist`; malformed YAML yields a parse error naming file and position; malformed `.secrets.yaml` yields an error naming the path with contents never quoted; validation yields one aggregate error; an unresolvable key yields `ErrKeyNotFound` naming provider and sources consulted; a failed write removes its temp file and leaves the destination unchanged. See Failure.
 - integration: depends only on the Go standard library and `gopkg.in/yaml.v3` (`tech.md` T1), builds with `CGO_ENABLED=0`, and is depended on by every later aido-core package through `Root`; no gRPC, MCP, or Workspace reference (P9, T12); no prior on-disk state exists to migrate. The external boundaries are the filesystem under `.aido/`, the process environment, and the `aido` CLI's stdout/stderr/exit code. Integration evidence: task T6 is an integration task carrying evidence `test/integration-cli-config-show`, which drives `aido config show` end to end against a real temp `.aido/` tree and asserts the CLI contract; error-path negative checks at the same boundary are planned in T6 (missing config, invalid config, key never printed) and in T4 (write failure leaves destination and directory unchanged). See Integration and Verification.
@@ -50,9 +50,32 @@ Go API, `package config`:
 - `type ValidationError struct { Problems []string }` implementing `error`;
   `Unwrap() []error` is not provided — the aggregate is flat and its `Error()`
   joins problems with `"; "`.
-- `func (c *Config) ResolveKey(provider string) (string, error)` — R4. Returns a
-  wrapped `ErrKeyNotFound` naming provider and sources consulted (R4.3).
+- `func (c *Config) ResolveKey(r Root, provider string) (string, error)` — R4.
+  Returns a wrapped `ErrKeyNotFound` naming provider and sources consulted
+  (R4.3), or `ErrUnsupportedKeySource` when `api_key_source` is neither `none`
+  nor an `env:NAME` reference — a distinct condition, because the key was never
+  looked for rather than looked for and missing. The `Root` parameter is
+  required: R4.2 falls back to `.aido/.secrets.yaml`, and `Root` is the sole
+  owner of that path (I3, `structure.md` S6), so a method with only a provider
+  name cannot reach it without violating this design's own boundary.
+  *(Amended 2026-07-21 by operator ruling. The originally approved signature,
+  `ResolveKey(provider string)`, could not satisfy R4.2 and was implemented with
+  the `Root` parameter in T5; this records the deviation rather than leaving the
+  approved artifact contradicting the code. See `APPROVALS.md`.)*
 - `var ErrKeyNotFound = errors.New("api key not found")`.
+- `var ErrUnsupportedKeySource = errors.New("unsupported api_key_source")`.
+- `func WriteSecrets(r Root, secrets map[string]string) error` — **R4.6**, the
+  only function in the package that writes a key. Refuses unless the target is
+  `Root.SecretsPath()` — satisfied by construction, since the target is not a
+  parameter — and unless that path is confirmed git-ignored first, returning
+  `ErrNotGitIgnored` otherwise. Writes at mode `0600` (R5.4) through `WriteFile`.
+- `var ErrNotGitIgnored = errors.New(...)` — the R4.6 refusal. Its message names
+  the repository scope, because a refusal a user reads as wrong gets filed as a
+  bug.
+- `const DirName = ".aido"` and `func (r Root) String() string` — the directory
+  name and the root path, exported so callers never spell either (R1.2).
+- `var SupportedProviders []string` — the closed provider set R3.3 validates
+  against, exported so a caller can present it.
 - `func WriteFile(path string, data []byte, perm fs.FileMode) error` — R5. Temp
   file in the destination directory, `fsync`, `rename`, `os.Remove` of the temp
   on any failure before rename.
@@ -99,6 +122,17 @@ one line per provider giving name, `base_url`, and `api_key_source` verbatim
   normally attach — the message is rebuilt, not wrapped (I1, R4.5).
 - Validation failures → one `ValidationError` listing all problems (R3.5).
   Non-fatal to the process; `product.md` P5 means aido reports and continues.
+- `api_key_source` neither `none` nor `env:NAME` → `ErrUnsupportedKeySource`
+  naming the provider and the expected forms. The offending value is never
+  quoted: a user who pasted a literal key where a reference belongs is exactly
+  the person the message must not echo (I1, R4.5).
+- Target of a key write not ignored by any rule *inside the repository* →
+  `ErrNotGitIgnored` (R4.6). Machine-global ignore sources — `/etc/gitconfig`,
+  `~/.gitconfig`, `~/.config/git/config`, `$XDG_CONFIG_HOME/git/ignore` — are
+  deliberately not consulted: a `.secrets.yaml` protected only by the current
+  machine is unprotected in every other clone, which is not what R4.6 asks. A
+  file already tracked in the index is likewise never treated as ignored,
+  matching git's own precedence.
 - Key absent from every source → `ErrKeyNotFound` wrapped with provider and the
   list of source names consulted (R4.3). Distinct from an I/O error so a caller
   can offer the user a fix.
@@ -150,6 +184,14 @@ one line per provider giving name, `base_url`, and `api_key_source` verbatim
 
 ## Verification
 
+- R4.6: tests assert the write succeeds when `.gitignore` or `.git/info/exclude`
+  covers the path, and is refused when the file is tracked, when the project is
+  outside a repository, and when the only covering rule lives outside the
+  repository (five configurations: the XDG default, `core.excludesFile` in
+  `~/.gitconfig`, in `~/.config/git/config`, in the repository's `.git/config`,
+  and via an `[include]` directive). A linked worktree is covered with its own
+  index. The suite pins `HOME` and `XDG_CONFIG_HOME` to a temp directory, with a
+  negative control that fails if any ignore rule reaches it from outside.
 - I1: a test resolves a key from env and from `.secrets.yaml`, then asserts the
   key value appears in neither the returned error of a subsequent failed
   resolution nor the full stdout+stderr of `aido config show` run against the

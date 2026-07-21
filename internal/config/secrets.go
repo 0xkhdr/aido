@@ -19,6 +19,11 @@ import (
 // from "your disk is broken" (R4.3).
 var ErrKeyNotFound = errors.New("api key not found")
 
+// ErrUnsupportedKeySource reports an api_key_source that is neither "none" nor
+// an "env:NAME" reference. It is distinct from ErrKeyNotFound: the key was
+// never looked for, because config does not say where to look.
+var ErrUnsupportedKeySource = errors.New("unsupported api_key_source")
+
 // ErrNotGitIgnored reports a refusal to write a resolved key to a path git
 // would track (R4.6).
 // The message names the scope on purpose. A user whose machine-global ignore
@@ -57,12 +62,25 @@ func (c *Config) ResolveKey(r Root, provider string) (string, error) {
 		return "", nil
 	}
 	consulted := make([]string, 0, 2)
-	if envName, ok := strings.CutPrefix(p.APIKeySource, "env:"); ok {
+	switch envName, isEnv := strings.CutPrefix(p.APIKeySource, "env:"); {
+	case isEnv:
 		consulted = append(consulted, "$"+envName)
 		// R4.2: set-but-empty is treated as unset and falls through.
 		if v := os.Getenv(envName); v != "" {
 			return v, nil
 		}
+	case p.APIKeySource == "":
+		// No source declared: the secrets file is the only place left to look.
+	default:
+		// An unrecognised form used to fall through silently, skipping the
+		// environment and then reporting a "consulted" list that omitted it —
+		// an error that lied about what had been checked.
+		//
+		// The offending value is deliberately NOT quoted (I1, R4.5): a user who
+		// pasted a literal key into api_key_source instead of a reference is
+		// exactly the person this must not echo.
+		return "", fmt.Errorf("provider %s has an unsupported api_key_source; expected \"env:NAME\" or \"none\": %w",
+			provider, ErrUnsupportedKeySource)
 	}
 	path := r.SecretsPath()
 	consulted = append(consulted, path)
