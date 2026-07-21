@@ -9,7 +9,7 @@ run `specd approve <spec> complete` with review.required enabled.
 
 - **Git HEAD:** 5cffbab12c21770a0f7a8f9cccc87e02fa4da958
 - **Reviewer:** pinky-auditor (subagent, unattended run 2026-07-21)
-- **Verdict:** needs-changes
+- **Verdict:** needs-changes — see "Re-audit at ddf549b (2026-07-21)" at the end of this document; that section, not the original findings list, is the current call.
 
 > Note: the scaffold recorded HEAD as `5cffbab` (T6). The tree actually audited is
 > `5168581` (T7, `test(config): enforce the tech.md T1 import allowlist`). The
@@ -404,3 +404,269 @@ network call; `coding_agent` is parsed and preserved but unused
 | I5 — no LLM or network call | **held, check narrow** | `imports_test.go:20` bans `net/http` by AST inspection, and `TestNoAliasedImportsHideOrigin` (`:127`) closes the aliasing escape. But `net`, `net/rpc`, and `crypto/tls` are unbanned, and the "pure function of arguments plus on-disk state and environment" clause of `design.md:83` is **broken** by the `git` subprocess (F1). |
 | I6 — `cmd/aido` holds no validity decision | **held by inspection, no check** | `config_show.go:35` delegates to `c.Validate()`; `main.go:17-34` only dispatches. `design.md:167` claims `go build` covers this; it does not (F9). |
 
+
+---
+
+## Re-audit at ddf549b (2026-07-21)
+
+Second pass by the same auditor, against `ddf549b`, on the three commits that
+claim to close the findings above (`aa3dd69`, `ddf549b`, and the two `chore(specd)`
+records between them). Everything below was checked by reading the code and by
+running it, not by reading the commit messages.
+
+Baseline at `ddf549b`: `go build ./...`, `go vet ./...` clean;
+`CGO_ENABLED=0 go test ./...` passes; `internal/config` 90.0% statement coverage
+(was 87.1%), `cmd/aido` 84.8% (unchanged); `CGO_ENABLED=0 go build ./cmd/aido`
+produces a statically linked ELF, so R1.1's cgo half still holds.
+
+**Provenance note.** The `**Git HEAD:**` field above still reads `5cffbab`, which
+is now stale by five commits (`5168581`, `f1c5413`, `aa3dd69`, `ad896ea`,
+`ddf549b`). It is left as the scaffold pinned it; correcting it by hand would
+falsify what the harness recorded. The tree audited in this section is `ddf549b`.
+This is the same defect F12 named, one round worse.
+
+**Standing note on authority.** All three fix commits are out of band: they edit
+files owned by T1, T3, T4, T6, and T7, all of which were already complete, and no
+task marker or evidence record claims them. The code is better than it was; the
+evidence chain is weaker than it was, because a passing suite at `ddf549b` is now
+attested by no task's completion transaction.
+
+### Disposition of F1–F12
+
+| # | severity (orig) | disposition | note |
+|---|---|---|---|
+| F1 | BLOCKER | **resolved** — with new problems | `os/exec` is gone from `secrets.go`, banned by name in `imports_test.go:29`, and no test can skip any more. But see N1, N2, N3: the replacement is not behaviour-equivalent to `git check-ignore`, and the import closure grew a network stack. |
+| F2 | MAJOR | **resolved** | `validate.go:52-55` implements the edge rule verbatim; `validate_test.go:55-57` asserts it; the two tests that pinned the violation were inverted correctly, and the `deepthought` case was given a key source so it still isolates R3.3. |
+| F3 | MAJOR | **partially resolved** | The `abort` closure body now executes and is asserted. Write/chmod/close branches remain dead. See N8 on the seam. |
+| F4 | MAJOR | **resolved** | `secrets.go:80` is now covered by `TestResolveKeyPresentFileMissingProviderKey`. The `.aido/`-does-not-exist crash is gone because `WriteSecrets` now discovers from the project directory (`secrets.go:92`). Residue: `secrets.go:68` (non-`ErrNotExist` I/O error) is still uncovered. |
+| F5 | MAJOR | **partially resolved** | The three violating lines in `config_show_test.go` are gone and now route through `config.NewRoot`. The check that was supposed to make this a control is not one — see N5. |
+| F6 | MODERATE | **still open** | `secrets.go:54` still only understands `none` and `env:`. F2's fix makes this marginally worse in effect: `Validate` now confirms `api_key_source` is *present* without checking its *form*, so `api_key_source: OPENAI_API_KEY` passes validation and is then silently ignored at resolution time. |
+| F7 | MODERATE | **still open** | `design.md` is untouched since `5cffbab` (verified: `git log 5168581..HEAD -- design.md` is empty). `design.md:53` still declares `ResolveKey(provider string)`; the code still takes `(r Root, provider string)`. `WriteSecrets`, `ErrNotGitIgnored`, `DirName`, `SupportedProviders`, `Root.String()` are still exported and still absent from the Interfaces section. |
+| F8 | MODERATE | **substance improved, finding still open** | I re-probed the two unsoundnesses: `cmd.Dir` pointing at a possibly-absent `.aido/` is fixed, and nested repositories now resolve correctly — `PlainOpenWithOptions(DetectDotGit)` finds the innermost enclosing repo, which is git's own answer (probed: outer repo ignoring `.aido/`, inner repo silent → `false`, matching `git check-ignore` run inside the inner repo). Neither is covered by a test. The design gap the finding is actually about is untouched: `design.md` still specifies no interface, failure mode, or verification for R4.6. |
+| F9 | MODERATE | **still open** | Nothing added for I6. `design.md:167` still claims `go build` covers it. |
+| F10 | MINOR | **partially resolved** | `TestWriteFileGoesThroughATempFile` (`write_test.go:154`) is a real fix for the `write_test.go:44` half — it observes two directory entries mid-write, so `os.WriteFile` now fails the suite, and I2 no longer rests on one test. The other three are unchanged: `secrets_test.go:152` still reads `if err != nil && strings.Contains(...)` and still asserts nothing when `err` is nil; `config_show_test.go` `TestConfigShowPrintsKeySourceNotKey` and the `"project"` substring assertion are as they were. |
+| F11 | MINOR | **still open, and now demonstrably load-bearing** | Nothing asserts the `go` directive. `go.mod:3` moved from `go 1.22` to `go 1.25.0` in `aa3dd69` and no check in this repository noticed. See N4. The `net`/`net/rpc`/`crypto/tls` half of the finding got materially worse — see N3. |
+| F12 | PROCESS | **still open, worse** | Three more out-of-band code commits, none claimed by a task, plus a HEAD field now five commits stale. |
+
+Superseded: none. F1 is the only finding whose severity class changed.
+
+### New findings
+
+Ranked by severity. All were verified by execution against `ddf549b`, not by
+inspection alone; the probe harness was a scratch copy of the module in `/tmp`,
+so nothing in this repository was modified to obtain these results.
+
+#### N1 — MAJOR. `.git/info/exclude` is silently not honoured; the go-git replacement is a functional regression on R4.6
+
+`internal/config/secrets.go:143` — `gitignore.ReadPatterns(tree.Filesystem, nil)`
+
+`ReadPatterns`'s own doc comment says it "reads the .git/info/exclude and then
+the gitignore patterns". In go-git v5.19.1 it does not, because the worktree
+billy filesystem refuses any path component named `.git`. Probed directly:
+
+```
+tree.Filesystem.Open(".git/info/exclude")
+  → open: invalid path component: ".git/info/exclude"
+gitignore.ReadPatterns(tree.Filesystem, nil) → 0 patterns, nil error
+```
+
+`ReadPatterns` discards that error (`ps, _ = readIgnoreFile(...)`), so the
+failure is invisible: no error is returned, no pattern is loaded, and `gitIgnores`
+answers `false`.
+
+Consequence: a user who ignores `.aido/` in `.git/info/exclude` — the canonical
+place for a *local, uncommitted* ignore of a local tool's state directory, and
+arguably the most likely place for this exact rule — gets `WriteSecrets` refused
+with `ErrNotGitIgnored`, on a path git genuinely ignores. The `git check-ignore`
+implementation that F1 removed handled this correctly.
+
+The direction is safe (a false refusal, not a false permit), but R4.6 is "write
+only when git ignores it", and the implementation now disagrees with git on a
+mainstream configuration. No test covers `.git/info/exclude` in either
+implementation, which is why the regression landed silently.
+
+Probe results for the full matrix at `ddf549b` (`gitIgnores` return for
+`.aido/.secrets.yaml`):
+
+| case | result | `git check-ignore` | verdict |
+|---|---|---|---|
+| `.gitignore` with `.aido/` | `true` | ignored | correct |
+| `.gitignore` with `.aido/.secrets.yaml` | `true` | ignored | correct (existing test) |
+| `.git/info/exclude` with `.aido/` | **`false`** | **ignored** | **N1 — wrong** |
+| `core.excludesFile` with `.aido/` | **`false`** | **ignored** | **N2 — wrong** |
+| tracked in the index | `false` | not ignored | correct, and now tested |
+| not a repository | `false` | n/a | correct |
+| nested repo, outer ignores | `false` | not ignored | correct (F8 concern closed) |
+| project dir reached via symlink | **`false`** | ignored | **N7 — wrong** |
+| `.aido/` then `!.aido/.secrets.yaml` | **`false`** | **ignored** | **N6 — wrong** |
+| inside a bare repo | `false`, no error | n/a | correct, does not panic |
+
+#### N2 — MODERATE. Global and system excludes are never consulted
+
+`internal/config/secrets.go:143`
+
+`gitignore.LoadGlobalPatterns` and `LoadSystemPatterns` exist in the same package
+and are not called. A `core.excludesFile` naming `.aido/` — probed, returns
+`false` — is ignored by git and refused by aido. Same class as N1, same safe
+direction, and the same absence of any test. If the go-git port is kept, both
+loaders belong in `gitIgnores` alongside `ReadPatterns`, in git's precedence
+order (system, global, `info/exclude`, then `.gitignore` files).
+
+#### N3 — MODERATE. `internal/config` now transitively links `net/http`, `crypto/tls`, `net`, and `golang.org/x/crypto/ssh`; the I5 check no longer means what it claims
+
+`internal/config/secrets.go:11` — `import "github.com/go-git/go-git/v5"`
+
+Verified with `go list -deps ./internal/config`: the closure now contains `net`,
+`net/http`, `crypto/tls`, and `golang.org/x/crypto/ssh`. The whole dependency
+graph went from ~30 packages to 337; the binary is 9.1 MB.
+
+`imports_test.go:26` bans `net/http` "because this package makes no network call
+(invariant I5)". That ban now guards only the *direct* import statement while the
+package's actual dependency closure carries a full HTTP client, a TLS stack, and
+an SSH transport, linked in for the sake of a local ignore-file lookup. No
+network call is made, so I5 *holds*; but the one check cited as holding it has
+been reduced to a naming convention. This is F11's second paragraph, escalated by
+the fix for F1.
+
+Avoidable: `gitIgnores` needs repository discovery, the index, and the ignore
+matcher. `plumbing/format/gitignore`, `plumbing/format/index` (or
+`storage/filesystem`), and `go-billy/osfs` supply all three without pulling
+`remote.go` and its transports. If the root package is kept for convenience, that
+is a decision T2 requires be recorded, not a side effect.
+
+#### N4 — MODERATE. `go.mod`'s Go floor moved from 1.22 to 1.25.0 with no ADR, and `tech.md` still says 1.22
+
+`go.mod:3` — `go 1.25.0` (was `go 1.22`)
+
+Forced, not gratuitous: go-git v5.19.1's own `go.mod` declares `go 1.25.0`. But
+the consequence is that a toolchain on Go 1.22, 1.23, or 1.24 can no longer build
+this module, while `tech.md` still states "Go 1.22 or newer" and `requirements.md:17`
+still states R1.1 in those terms. R1.1 is arguably satisfied on a literal reading
+(1.25 *is* "1.22 or newer"), and I do not call it violated — but the module's
+supported-toolchain floor is a steering fact that moved three minor versions in a
+commit whose subject line is about `git check-ignore`, with no record. Either pin
+an older go-git v5 that keeps the 1.22 floor, or amend `tech.md` and R1.1 by ADR.
+F11 is exactly the check that would have caught this.
+
+#### N5 — MODERATE. `TestNoHandBuiltAidoPaths` is evadable by the same trick it uses on itself, and guards one package
+
+`cmd/aido/config_show_test.go:64`
+
+Two defects:
+
+1. It matches string *literals* containing `.aido`. `filepath.Join(dir, "."+"aido")`,
+   `fmt.Sprintf(".%s", "aido")`, or `"." + config.DirName[1:]` all evade it. The
+   test knows this — `config_show_test.go:66` builds its own needle as
+   `"." + config.DirName[1:]` precisely so it does not match itself. The evasion
+   is demonstrated in the check's own source, two lines above the check.
+2. `parser.ParseDir(fset, ".", nil, 0)` at `config_show_test.go:68` scans the
+   current package only, i.e. `cmd/aido`. R1.2 is a repository-wide rule ("when
+   *any* package needs a path under `.aido/`"). Today `cmd/aido` and
+   `internal/config` are the only packages, so the gap is latent — but the first
+   `internal/git` or `internal/okf` added by the next spec inherits no check at
+   all, and nothing will say so. The same objection applies to `imports_test.go:140`,
+   which still scans only `"."`.
+
+It also has a false-positive mode: any literal containing `.aido` is flagged,
+including a legitimate error message such as `"no .aido directory found"`. A
+check that fires on correct code trains authors to route around it.
+
+A `go:generate`-free repo-root test walking `go list ./...` and parsing every
+package outside `internal/config` would cover R1.2 properly. As it stands R1.2 is
+enforced in one package, against one syntactic form, by a test that documents its
+own bypass. I record R1.2 as **still N** in the trace table above.
+
+#### N6 — MINOR. Negation inside an excluded directory diverges from git
+
+Probed: `.gitignore` containing `.aido/` followed by `!.aido/.secrets.yaml`
+returns `false`. Git's rule is that a file cannot be re-included when a parent
+directory is excluded, so real git reports the file *ignored*. Fails safe
+(refusal). Low likelihood, but it is a second divergence in the same matcher and
+belongs in whatever test finally covers N1/N2.
+
+#### N7 — MINOR. A project directory reached through a symlink is refused
+
+`internal/config/secrets.go:128-132`
+
+`filepath.Rel(tree.Filesystem.Root(), path)` compares an evaluated worktree root
+against an unevaluated caller path. Probed: with the project reached via a
+symlink, `rel` starts with `..` and `gitIgnores` returns `false`, so a correctly
+ignored `.secrets.yaml` is refused. Fails safe. Affects anyone whose project
+lives behind a symlink, and every `t.TempDir()` on macOS (`/var` → `/private/var`),
+which means the R4.6 tests would misreport there. One `filepath.EvalSymlinks` on
+both sides closes it.
+
+#### N8 — MINOR. The `fsync` seam is sound, with two caveats
+
+`internal/config/write.go:16` — `var fsync = func(f *os.File) error { return f.Sync() }`
+
+I judge the seam **acceptable**. It is package-private, the production value is
+`f.Sync()` unchanged, `WriteFile`'s behaviour on the success path is identical,
+both tests restore it via `t.Cleanup`, and it buys the one thing that could not be
+bought otherwise: proof that the cleanup runs, with the temp file's existence at
+failure time asserted (`write_test.go:126-134`) rather than assumed. The
+alternative — leaving R5.3's cleanup permanently unexecuted and hoping — is worse.
+Two caveats:
+
+- It is an unsynchronised package-level variable. No test in `internal/config`
+  calls `t.Parallel()` today, so there is no race now, but the first one added
+  makes this a data race, and nothing in the file says so. A one-line comment on
+  the var, or a `t.Setenv`-style helper that fails under `-race`, would fix it.
+- Coverage after the fix: the `abort` closure (`write.go:39-43`) and the fsync
+  branch (`write.go:50-52`) are now covered. The write (`:44`), chmod (`:47`), and
+  close (`:53`) branches are still at zero. Since all three route through the same
+  now-proven `abort`, I do not treat them as separately load-bearing — the close
+  branch at `:53-56` duplicates `abort`'s cleanup inline rather than calling it,
+  so that one is genuinely unexercised code, but it is three lines and correct by
+  inspection. F3 is downgraded, not dismissed.
+
+#### N9 — MINOR. Two comments in the new tests describe something the code does not do
+
+- `internal/config/secrets_test.go:234` says "`--force`, because the path is
+  ignored". `git.AddOptions` has no `Force` field, and none is set. The add
+  succeeds anyway because `AddWithOptions` passes an empty ignore-pattern list to
+  `doAdd` (`worktree_status.go:349`), so an explicit `Path` is never filtered.
+  The test is *sound* — I confirmed the index entry is genuinely created, because
+  if it were not, `gitIgnores` would return `true` and the test would fail — but
+  the comment attributes the outcome to a flag that does not exist.
+- `cmd/aido/config_show_test.go:78-80` — the `found` counter and its
+  `testing.Verbose()` log are dead ceremony; `t.Errorf` already carries the
+  signal.
+
+### Verdict
+
+**needs-changes.**
+
+F1's blocker is genuinely closed: the `git` binary is out of the runtime path,
+the ban is now enforced by a check that would have caught it, and the R4.6 tests
+can no longer skip themselves into silence. F2, F4, and the substance of F3 and
+F10 are real fixes, honestly done, and the coverage moved in the right direction
+for the right reasons. I want to be clear that this pass is better work than the
+one it corrects.
+
+It does not ship, for four reasons:
+
+1. **N1** is a functional regression on R4.6 introduced by the fix for F1, in the
+   safe direction but silently, on a mainstream git configuration, uncovered by
+   any test. Trading a steering violation for a correctness regression on the same
+   requirement is not a closed finding.
+2. **F7 and F8** are untouched. `design.md` still carries a signature the code
+   does not implement and still specifies nothing whatsoever for R4.6 — the
+   requirement that has now been implemented twice, both times without a design
+   gate, and got it wrong the second time. That is the causal chain, not a
+   coincidence.
+3. **N5** means R1.2 is still enforced by nothing that would stop the next
+   violation, which is the identical position F5 described; only the specific
+   three lines were fixed.
+4. **F12/N4** — every one of these changes sits outside any task's completion
+   transaction, and a steering-relevant toolchain floor moved inside a commit
+   about something else. The harness cannot currently attest the tree it is being
+   asked to approve.
+
+Minimum to clear: fix N1 and N2 (load `info/exclude` and global excludes, and
+stop discarding `ReadPatterns`' error) with a test per ignore source; amend
+`design.md` for R4.6 and for `ResolveKey`'s real signature plus the five
+undesigned exports; record N3 and N4 as an ADR or reduce the import to the
+subpackages that are actually needed; and either widen the R1.2 check to every
+package or drop the claim that R1.2 is checked. F6, F9, F10's residue, and F11
+remain open and are not blockers.
