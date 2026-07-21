@@ -1005,3 +1005,38 @@ stated plainly and stays a proposal — never a self-applied change.
   depending on a craftsman volunteering it.
 - **Status:** open — the code is correct and tested; the *record* of why it does
   not match the design lives only here and in T8's audit.
+
+### 2026-07-21 — friction — `specd review` scaffolds a different filename than the one a task can declare, and exits non-zero on success
+
+- **Context:** spec `aido-config`, execute phase, preparing T8 (role `auditor`,
+  declared file `.specd/specs/aido-config/review.md`).
+- **Actual:**
+  ```
+  $ specd review aido-config
+  scaffolded .specd/specs/aido-config/review_report.md
+  $ echo $?
+  2
+  ```
+  Two problems in one command. (1) The verb writes `review_report.md`; the
+  tasks-authoring skill's own guidance led to declaring `review.md`, so the
+  auditor task's declared deliverable and the harness's scaffold are different
+  files. Nothing reconciles them — the scaffold is not named anywhere the task
+  author can see before running it. (2) It printed a success line and exited
+  **2**. A second run correctly reports `review report already exists for HEAD
+  … ; pass --force to overwrite` and exits 1, so the non-zero on the *successful*
+  scaffold is not the "already exists" path.
+- **Why it matters beyond tidiness:** an unattended driver branches on exit
+  codes. A verb that succeeds and exits 2 either halts a run that should
+  continue, or trains the driver to ignore this verb's exit code entirely —
+  which is worse, because the exit-1 "already exists" case is a real refusal.
+- **Related, smaller:** T8's deliverable lives under `.specd/`, and
+  `CheckDiffScope` skips every non-protected `.specd/` path
+  (`gates/diffscope.go:114`). So the auditor task is the one task in this spec
+  whose declared file scope enforcement cannot check at all — it could write
+  anything, anywhere under `.specd/specs/`, and the scope gate would pass.
+- **Recommendation:** (a) exit 0 when the scaffold is written; (b) name the
+  scaffold path in the tasks skill, or accept `review.md` as an alias, so the
+  declared file and the written file cannot diverge; (c) have `specd check`
+  report when a task's declared file does not exist at completion time — that
+  single check would have caught the mismatch before the auditor ran.
+- **Status:** open
