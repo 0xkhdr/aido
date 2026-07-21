@@ -1214,3 +1214,218 @@ and `aa3dd69` are all out of band with no task marker claiming them, and the
 F8 have now survived four passes — `design.md` still specifies no interface, no
 failure mode, and no verification for R4.6, which is the fourth consecutive pass
 in which this requirement has been redesigned at implementation time.
+
+### Fifth pass at 3a1e33b
+
+Baseline: `go build ./...`, `go vet ./...`, `CGO_ENABLED=0 go test ./...` pass.
+`internal/config` 87.3%, `cmd/aido` 84.8%. Closure still 112 packages, no `net`,
+`net/http`, or `crypto/tls`. Nothing written under `$HOME`; no git write command
+issued.
+
+#### 1. Is NEW1 closed?
+
+**Yes.** `grep` over `internal/config/*.go` finds no `UserHomeDir`, no
+`XDG_CONFIG_HOME`, no `/etc/gitconfig`, no `LoadGlobalPatterns`/`LoadSystemPatterns`,
+and no `excludesFile`. The only surviving `os.Getenv` is `secrets.go:58`, which is
+R4.1's `env:NAME` lookup and belongs there. `ignorePatterns` is now
+`info/exclude` from `commonDir(gitDir)` plus `gitignore.ReadPatterns` over the
+worktree, and nothing else.
+
+I probed the two escapes I could construct rather than taking the grep as proof:
+
+- **A symlinked subdirectory inside the worktree pointing at a directory outside
+  it, containing a matching `.gitignore`.** `ReadPatterns` does not follow it —
+  billy's `ReadDir` reports the symlink as a non-directory, so the recursion skips
+  it. aido `false`, git `not-ignored`: agreement, no escape.
+- **`commondir` pointing at an arbitrary directory** whose `info/exclude` matches.
+  aido does follow it, because `commonDir` returns the file's contents
+  unvalidated. This is not a reachable weakness: writing `commondir` requires
+  write access inside `.git`, and anyone holding that can write
+  `.git/info/exclude` directly. Worth one sentence in the doc comment, not a
+  finding.
+
+All five configurations I demonstrated as leaks at `d90efc4` now refuse, verified
+against real `git check-ignore` in an isolated `HOME`:
+
+```
+!! GLOBAL: XDG default ignore                    aido=false git=ignored
+!! GLOBAL: core.excludesFile in ~/.gitconfig     aido=false git=ignored
+!! GLOBAL: core.excludesFile in XDG config       aido=false git=ignored
+!! GLOBAL: core.excludesFile in repo .git/config aido=false git=ignored
+!! GLOBAL: core.excludesFile via [include]       aido=false git=ignored
+```
+
+Those five `!!` are deliberate, documented, and tested by
+`TestWriteSecretsIgnoresProtectionOutsideTheRepository` (`secrets_test.go:396`),
+which is table-driven over exactly these five and asserts `ErrNotGitIgnored` *and*
+that nothing reached disk. **There are now zero divergences in the unsafe
+direction anywhere in the matrix.** That is the first time in five passes.
+
+#### 2. On deleting the global sources
+
+I still think it is right, and more firmly having read the implementation than
+when I proposed it. The doc comment at `secrets.go:263-281` states the reason
+better than my finding did, and states it where the next person to touch this
+will read it — including the concrete history of why reading `~/.gitconfig` alone
+was worse than reading nothing. That is the correct place for that paragraph.
+
+The reasoning, restated so it can be quoted: R4.6 exists so a resolved key cannot
+be committed. "Committed" is not scoped to this machine. A `.secrets.yaml`
+protected only by the current user's global ignore is unprotected in every other
+clone and for every other collaborator, so treating that as satisfying the guard
+answers a question R4.6 did not ask. Refusing until the rule is written into the
+repository — `.gitignore` or `.git/info/exclude` — is the correct refusal, and it
+is also the one that makes the protection durable rather than incidental.
+
+**The message should say so.** Today the refusal is:
+
+```
+refusing to write a key to a path that is not git-ignored: <path>
+```
+
+For the user whose `~/.config/git/ignore` does cover `.aido/`, that sentence is
+false as they will read it — their git *does* ignore it — and their first move
+will be to check the rule they already have, find it, and file a bug. The
+refusal is right; the explanation is missing. Something like "not ignored by any
+rule in this repository (`.gitignore` or `.git/info/exclude`); a machine-global
+ignore does not protect the file in other clones" costs one line and converts a
+confusing refusal into an instruction. I record this as **NEW5 — MINOR**, and it
+is explicitly **not** blocking for R4.6: R4.6 constrains the refusal, not its
+wording, and no requirement in this spec specifies message text for it.
+
+#### 3. Residual matrix
+
+| case | status |
+|---|---|
+| root `.gitignore`, `info/exclude`, subdirectory `.gitignore` | agree with git |
+| tracked via `git add -f` despite an ignore rule | agree — refused |
+| `.aido/` absent (NN1) | agree — ignored, write fails as `fs.ErrNotExist` |
+| linked worktree via real `git worktree add` (NN5) | agree, both ignore and per-worktree index |
+| symlinked project path (N7) | agree |
+| not a repository / inside a bare repo | refused |
+| **N6 — negation inside an excluded directory** | **still open.** `.aido/` then `!.aido/.secrets.yaml`: aido `false`, git `ignored`. Safe direction, untested, unchanged across four passes. Now the only remaining false *refusal* in the matrix. |
+| **NN7 — stray empty `.git` directory** | **still open.** aido `true`, git `fatal`. Nil consequence: a directory that is not a repository cannot commit anything. |
+| **NEW2 — `core.excludesFile` parsing gaps** | **superseded.** `excludesFile`, `systemGitConfig`, and `globalExcludesFile` are deleted, so the `~`-expansion, `%(prefix)`, and empty-value gaps no longer exist. What remains is `parseExcludeFile`'s handling of indented `#` comments and backslash-escaped trailing spaces in `info/exclude`. Immaterial. |
+| **NEW3 — thin linked-worktree fixture** | **resolved.** The fixture now writes a real index via `index.NewEncoder` naming `.aido/.secrets.yaml` and asserts refusal, so `trackedInIndex` is exercised on the per-worktree index instead of taking its early return. This is what I asked for. |
+| **NEW4 — `DirName` selector match** | **resolved.** Qualified by package identifier; probed against an unrelated `flags.DirName`. |
+
+#### 4. Is criterion 4.6 demonstrably satisfied at `3a1e33b`?
+
+**Yes. I sign it.**
+
+`requirements.md:55` reads: *"When a code path would write a resolved key to
+disk, the system shall refuse unless the target is `.aido/.secrets.yaml` and that
+path is confirmed git-ignored first."* Taking it clause by clause:
+
+- **"a code path would write a resolved key to disk"** — `WriteSecrets`
+  (`secrets.go:89`) is the only function in the package that writes a key
+  anywhere. I re-read every write site in `secrets.go`, `write.go`, `config.go`,
+  and `config_show.go` to confirm that; `WriteFile` is generic and takes bytes,
+  and no other caller passes it key material.
+- **"unless the target is `.aido/.secrets.yaml`"** — satisfied by construction,
+  which is stronger than satisfied by check: the target is not a parameter.
+  `WriteSecrets` computes `path := r.SecretsPath()`, so no caller can aim it
+  elsewhere.
+- **"confirmed git-ignored first"** — the confirmation precedes the write with no
+  path around it (`secrets.go:92-98`), it is a refusal rather than a warning, and
+  it now agrees with `git check-ignore` on every repository-scoped source I could
+  construct: root `.gitignore`, nested `.gitignore`, `info/exclude` including
+  through `$GIT_COMMON_DIR` in a linked worktree, and index tracking beating
+  ignore rules in both a normal repository and a linked worktree's own index.
+  Where it disagrees with git it refuses; it no longer permits anywhere git would
+  not.
+
+Demonstrated by eleven tests that would fail if the behaviour regressed
+(`secrets_test.go:209, 231, 248, 303, 322, 341, 352, 396, 460, 558`, plus
+`TestWriteFileHonoursMode` for the 0600 half), running hermetically behind
+`isolateGitEnvironment` with `TestIgnoreSourcesAreIsolated` as the negative
+control that fails if that isolation ever stops holding. No test skips. Nothing
+requires the `git` binary at runtime.
+
+Two limits on that signature, stated so the evidence text can carry them rather
+than being discovered later:
+
+1. **N6 remains.** A `.gitignore` that excludes `.aido/` and then negates
+   `!.aido/.secrets.yaml` is ignored by git and refused by aido. R4.6 is a refusal
+   requirement; refusing more than required does not violate it, and this case is
+   perverse in context — a user does not write a rule to re-include the file they
+   are asking aido to protect. Non-blocking, and it should be closed anyway
+   because it is three lines and it is the last disagreement left.
+2. **`/etc/gitconfig` is no longer relevant** — no machine-global source is read
+   at all, so NN2's documented gap is closed by deletion rather than by
+   isolation. The suite is hermetic without qualification now.
+
+I record R4.6 as **D — demonstrated**, upgrading it from the **P** in the trace
+table at the top of this document. Record the criterion `pass`; quote whatever
+you need from this subsection.
+
+#### On F7/F8 and whether they block 4.6
+
+Asked directly, so answered directly: **no, F7 and F8 do not block criterion
+4.6, and you should not carry them to the operator as if they did.**
+
+A criterion is satisfied when the behaviour `requirements.md` demands is
+implemented and demonstrated by tests that would fail on regression. That is now
+true of R4.6 independently of what `design.md` says, and it would be a category
+error to withhold the criterion because an upstream artifact is silent — the code
+does not become less correct for having been designed late.
+
+Where they *do* bite, and where I would keep raising them:
+
+- **Spec-level completion.** F8 is the reason R4.6 was implemented four times in
+  five passes: with no interface, no failure mode, and no verification specified,
+  each implementation was a fresh invention and the first three were wrong in
+  ways a design gate would have caught in minutes. That is an argument about this
+  spec's approval and about the next spec's process, not about whether the
+  criterion holds today.
+- **F7 is the one with downstream cost.** `design.md:53` publishes
+  `ResolveKey(provider string)`; the code implements
+  `ResolveKey(r Root, provider string)`. `design.md` is stated to be the
+  compatibility surface later specs consume, so that line is a wrong instruction
+  sitting in an approved artifact, and `WriteSecrets`, `ErrNotGitIgnored`,
+  `DirName`, `SupportedProviders`, and `Root.String()` are exported and absent
+  from it entirely. That is worth an operator ruling of the same kind that
+  settled N4 — a small amendment recording what was actually built.
+
+So: sign 4.6, take F7/F8 to the operator as a design-amendment request and a
+process finding, not as a blocker on this criterion.
+
+#### Verdict
+
+The verdict line at the top of this document remains **needs-changes**, and I
+want the distinction explicit so it is not misread as contradicting the paragraph
+above. It is the verdict on the *spec*, which the review gate consumes for
+`approve complete`, and it is not a verdict on R4.6.
+
+R4.6 is signed. What keeps the spec at needs-changes is everything else still
+open, none of which this pass touched:
+
+- **F6** (moderate, correctness): an unrecognised `api_key_source` — a bare
+  `OPENAI_API_KEY`, a typo'd `en:`, `keyring` — silently skips the environment
+  and reports only the secrets file as consulted. `Validate` confirms the field is
+  present but never checks its form. No test exercises a non-`env:`, non-`none`
+  value.
+- **F7, F8** (moderate, above).
+- **F9** (moderate): I6 has no check; `design.md:167` still claims `go build`
+  covers it.
+- **F11** (minor): nothing fails if `go.mod`'s directive moves again, which is how
+  the 1.22→1.25 change went unnoticed in the first place.
+- **F10 residue** (minor): `secrets_test.go:152`'s
+  `if err != nil && strings.Contains(...)` still asserts nothing when `err` is nil.
+- **F12** (process): five out-of-band code commits, no task marker claiming any of
+  them, and `**Git HEAD:**` at the top of this document still reads `5cffbab`.
+- **N6, NN7, NEW5** (minor, above).
+
+F6 is the only one of those I would call close to blocking on its own merits; the
+rest are process and residue. If the operator rules on F7/F8 and F6 is fixed, I
+expect the next pass to be short.
+
+Closing note on the work itself, since I have been unsparing for five passes and
+it would be dishonest to leave that unbalanced: the R4.6 implementation at
+`3a1e33b` is better than what I would have written unprompted. Deleting
+`globalExcludesFile` rather than patching it was the right call and took the
+harder road of removing a feature that looked like correctness. The negative
+control in the test suite, the table over the five demonstrated leak
+configurations, and the doc comment that records *why* the simpler thing is the
+safer thing are all the marks of code that will survive contact with the next
+person who reads it.

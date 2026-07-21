@@ -21,7 +21,12 @@ var ErrKeyNotFound = errors.New("api key not found")
 
 // ErrNotGitIgnored reports a refusal to write a resolved key to a path git
 // would track (R4.6).
-var ErrNotGitIgnored = errors.New("refusing to write a key to a path that is not git-ignored")
+// The message names the scope on purpose. A user whose machine-global ignore
+// does cover .aido/ would otherwise read "not git-ignored" as simply wrong and
+// file a bug, when the refusal is deliberate: only rules inside the repository
+// protect the file in someone else's clone.
+var ErrNotGitIgnored = errors.New("refusing to write a key to a path no rule in this repository ignores " +
+	"(.gitignore or .git/info/exclude); a machine-global ignore does not protect the file in other clones")
 
 // secretsKeys maps a provider name to its key in .aido/.secrets.yaml. Only
 // nvidia_nim differs from <provider>_api_key (blueprint §4.4).

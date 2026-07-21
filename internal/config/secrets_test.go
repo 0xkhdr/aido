@@ -335,6 +335,20 @@ func TestWriteSecretsThroughSymlinkedProjectPath(t *testing.T) {
 	}
 }
 
+// AUDIT NEW5: the refusal names its scope, so a user whose global ignore does
+// cover .aido/ can tell a deliberate refusal from a bug.
+func TestNotGitIgnoredMessageNamesRepositoryScope(t *testing.T) {
+	message := ErrNotGitIgnored.Error()
+	for _, want := range []string{"this repository", ".gitignore", ".git/info/exclude", "other clones"} {
+		if !strings.Contains(message, want) {
+			t.Errorf("refusal %q does not mention %q", message, want)
+		}
+	}
+	if strings.Contains(message, testKey) {
+		t.Error("refusal carries a key")
+	}
+}
+
 // The negative control for the isolation above: with no ignore rule anywhere,
 // the write must be refused. If a developer's global git config leaked in, this
 // fails — which is what makes the positive tests meaningful.
