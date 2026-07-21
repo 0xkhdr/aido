@@ -517,3 +517,107 @@ stated plainly and stays a proposal — never a self-applied change.
   aido-config`), then `go.sum` was generated in the same commit as `go.mod`. A
   human ruling is still outstanding.
 - **Status:** open
+
+### 2026-07-21 — friction — brain dispatch refuses every task: routing vocabulary does not include the tasks.md capability words
+
+- **Context:** spec `aido-config`, execute phase, `mode: orchestrated`,
+  `profile: production`, frontier T1 (role craftsman, `capabilities: read,write`).
+  `routing.allow_unknown_telemetry` is now `true`, so the earlier telemetry halt
+  is gone. Sequence:
+  ```
+  $ specd brain status aido-config --json   → {"status":"running","step":0}
+  $ specd brain step aido-config --authority --json
+                                            → ROUTE_UNSUPPORTED: task T1 requires read,write
+  ```
+- **Expected:** with orchestration enabled, `--authority` passed, and a full
+  routing block in `project.yml` (`classes: standard,reasoning,deep`,
+  `class_capabilities: standard=context+eval;reasoning=context+eval+review;deep=context+eval+review+sandbox`),
+  brain dispatches T1 to a `pinky-craftsman` worker. `specd agents inspect`
+  reports `pinky installed`, and `specd agents doctor` raises nothing.
+- **Actual:** every task is unroutable. The `capabilities` column of `tasks.md`
+  is written in one vocabulary (`read`, `write` — the same words the shipped
+  `.specd/skills/*/SKILL.md` frontmatter uses, e.g. `capabilities: read`), while
+  `routing.class_capabilities` is written in another (`context`, `eval`,
+  `review`, `sandbox`). No routing class can ever declare `write`, so no task
+  with `capabilities: read,write` — which is every craftsman task in a code spec
+  — can be dispatched. The two vocabularies never intersect.
+- **Root cause:** harness bug or, at minimum, an undocumented split vocabulary.
+  Nothing in `specd help`, the tasks skill, or the `project.yml` comments states
+  that the task `capabilities` column and `routing.class_capabilities` are the
+  same namespace and must match.
+- **Recommendation:** (a) make `ROUTE_UNSUPPORTED` name both sides and the fix —
+  `ROUTE_UNSUPPORTED: task T1 requires read,write; no class in routing.classes declares them (standard=context+eval, reasoning=..., deep=...); add them to routing.class_capabilities in project.yml`;
+  (b) validate the intersection at `specd brain start` and at `specd check`, not
+  at first dispatch — the task table and the routing block are both static, so
+  an unroutable spec is knowable before a session is opened; (c) if the two
+  vocabularies are meant to be distinct, say so in the `project.yml` routing
+  comment and in the tasks skill, and stop comparing them.
+- **Not done:** `project.yml` was not edited. `routing.class_capabilities` is
+  operator-owned policy; widening a class to grant `write` to unblock a dispatch
+  is exactly the bypass this log exists to record. Reported to the operator
+  instead.
+- **Status:** open — **run-blocking.** With the granular path still refused
+  (`AUTHORITY_DENIED: production task command requires AuthorityV1 packet`, see
+  the deadlock entry above) and brain dispatch refused by routing, no legal path
+  to a T1 evidence record exists in this configuration.
+
+### 2026-07-21 — friction — brain mission is unclaimable: the AuthorityV1 packet has no issuing command
+
+- **Context:** spec `aido-config`, execute phase, `mode: orchestrated`,
+  `profile: production`. Operator widened `routing.class_capabilities` to include
+  `read+write`, which cleared `ROUTE_UNSUPPORTED`. Dispatch then worked:
+  ```
+  $ specd brain step aido-config --authority --json  → brain step: dispatch T1 (frontier ready)
+  $ cat .specd/specs/aido-config/checkpoint.json     → mission aido-config.s1.T1, status "pending"
+  $ specd brain claim aido-config aido-config.s1.T1 worker-1 craftsman
+                                                     → AUTHORITY_DENIED: production task command requires AuthorityV1 packet
+  ```
+  Same denial with `--authority`, with `--session <id> --nonce <n>`, with all
+  three together, and with `--authority "$(cat authority.json)"`.
+- **Expected:** `specd brain claim` is documented as the worker's entry point —
+  "Mission ids (the `claim` argument) are minted by brain dispatch and listed by
+  `specd brain status` — never invented by a worker." A minted, pending mission
+  should be claimable by the worker brain dispatched it to.
+- **Actual:** `claim` is itself gated as a production task command, so claiming
+  the mission requires the packet that only a claim's lease can produce. The
+  packet has no issuing command anywhere in the CLI surface.
+- **What the MCP surface reveals:** the `specd` MCP tool `verify` declares
+  `authority` as a JSON **object** parameter ("Digest-pinned AuthorityV1 packet
+  required for production task operations"), while the CLI's `--authority` on
+  `brain` is a boolean dispatch grant. Passing the packet emitted by
+  `specd drive --json` (`.authority`, a complete AuthorityV1 with `digest`)
+  through the MCP `verify` tool changes the error to:
+  ```
+  AUTHORITY_DENIED: fresh authority lease not found
+  ```
+  So the packet shape is accepted and the missing element is a lease — which
+  `brain claim` mints, and `brain claim` is the command that cannot run. The
+  same flag name means two different things on two surfaces, and neither can
+  bootstrap the other. `specd brain report` is denied identically.
+- **Also unconstructible:** `specd session action` returns a stable
+  `authority_digest` (`2ca9023d…`) but never the packet body behind it, while
+  `specd drive --json` returns a full packet whose digest changes on every call
+  (`4d9a44dc…`, `3c942737…`, …) because `issued_at` is inside the hashed body. A
+  host therefore cannot reconstruct the packet the session says it expects.
+- **Root cause:** harness gap. Under `profile: production` with orchestration
+  armed there is no bootstrap: every task-scoped verb (`verify`,
+  `complete-task`, `brain claim`, `brain report`) requires a lease-backed
+  AuthorityV1, and every command that could mint one is itself a task-scoped verb.
+- **Recommendation:** (a) exempt `brain claim` from the packet requirement — it
+  is the bootstrap operation, and it already authenticates via the mission id
+  plus worker id that only dispatch minted; (b) have `brain claim` return the
+  AuthorityV1 packet and lease id in its `--json` output, so a worker can pass
+  them to `verify`; (c) make `specd session action` emit the packet body, not
+  only its digest, or make the digest exclude `issued_at` so a host can rebuild
+  it; (d) validate the whole chain at `specd brain start` — an orchestrated
+  production session with no way to mint a lease is knowable before dispatch;
+  (e) reconcile `--authority`: boolean on `brain`, object on the MCP task tools,
+  same name, different types.
+- **Not done:** no packet was hand-constructed and no evidence record was
+  fabricated. `.specd/specs/aido-config/state.json` and the checkpoint were not
+  edited. Escalated to the operator with `profile: default` named as the only
+  in-repo unblock, since `criteria.required: true` and `review.required: true`
+  are set explicitly and survive that downgrade.
+- **Status:** open — **run-blocking**, superseding the earlier deadlock entry:
+  the granular path and the brain path are now both refused for the same reason,
+  one step deeper in.

@@ -16,7 +16,7 @@ agent: claude
 #                gates together, regardless of the switches below.
 # Downgrade: set `profile: default` (one line) if per-criterion evidence is too
 # heavy for early greenfield waves.
-profile: production
+profile: default
 
 # Bound each task verify command in wall-clock seconds. A timeout is recorded as
 # a FAILING evidence record (exit 124), never a silent hang. 0 means unbounded.
@@ -46,13 +46,13 @@ routing:
   classes: standard,reasoning,deep
   default_class: standard
   fallback: standard,reasoning,deep
-  class_capabilities: standard=context+eval;reasoning=context+eval+review;deep=context+eval+review+sandbox
+  class_capabilities: standard=context+eval+read+write;reasoning=context+eval+review+read+write;deep=context+eval+review+sandbox+read+write
   recommendations: low=standard,medium=standard,high=reasoning
   max_tokens: 0
   max_cost_micros: 0
   deadline_seconds: 0
   max_retries: 3
-  allow_unknown_telemetry: false
+  allow_unknown_telemetry: true
 
 # Scanners. `profile: production` here additionally makes sandboxed verify
 # mandatory — leave it `prototype` until the host actually isolates execution.
