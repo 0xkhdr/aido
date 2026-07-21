@@ -968,3 +968,40 @@ stated plainly and stays a proposal — never a self-applied change.
 - **Status:** open — **the most serious finding of the run so far.** The two
   bugs compose into: the documented orchestration path (dispatch → claim →
   work → report) cannot complete a single task.
+
+### 2026-07-21 — friction — the approved design specifies a signature that cannot satisfy its own requirement, and task scoping makes the fix unreachable
+
+- **Context:** spec `aido-config`, execute phase, task T5 (`internal/config/secrets.go`,
+  `internal/config/secrets_test.go`).
+- **What the approved design says:** `func (c *Config) ResolveKey(provider string) (string, error)`.
+- **Why it cannot work:** R4.2 requires falling back to `.aido/.secrets.yaml`.
+  That path comes from a `Root`, which the design deliberately made the sole
+  owner of `.aido/` path construction (invariant I3, `structure.md` S6). A method
+  on `Config` with only a provider name has no `Root` and no legal way to build
+  one — constructing the path inline is exactly what the design forbids.
+- **Why the clean fix is out of reach:** the natural repair is a `root` field on
+  `Config`, set by `Load`. `Config` and `Load` live in `internal/config/config.go`,
+  which is **T2's** declared file. T2 is complete. Touching it from T5 is an
+  `OUTSIDE_SCOPE` refusal, and widening T5's files means editing an approved
+  `tasks.md`. So the correct design-conformant fix is blocked by scope
+  enforcement, and the only reachable option is to deviate from the design.
+- **Actual resolution:** implemented as
+  `func (c *Config) ResolveKey(r Root, provider string) (string, error)` — a
+  deliberate, recorded deviation from an approved artifact. Nothing bypassed a
+  gate; the deviation is simply invisible to every gate, which is the finding.
+- **Root cause:** two gaps compounding. (1) The design gate does not check that a
+  declared interface can satisfy the requirements it claims — same class as the
+  R4.6 coverage gap logged earlier. (2) Task file scoping is per-task and
+  permanent, so a design error discovered in task *n* cannot be repaired in the
+  file that owns it once task *m* < *n* has closed.
+- **Recommendation:** (a) name the situation in the tooling — a
+  `specd request-decision` was available but records a request and advances
+  nothing, so an unattended run has no way to *resolve* a design/implementation
+  conflict, only to note it; (b) give `midreq` an explicit "design deviation"
+  scope so an agent can record the deviation against the artifact it deviates
+  from, rather than in a feedback log the design's next reader will not open;
+  (c) at minimum, have the auditor role's `review.md` scaffold carry a
+  "deviations from design" section, so this surfaces at review instead of
+  depending on a craftsman volunteering it.
+- **Status:** open — the code is correct and tested; the *record* of why it does
+  not match the design lives only here and in T8's audit.
