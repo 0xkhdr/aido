@@ -62,12 +62,17 @@ func projectDir(t *testing.T, configBody string) string {
 // the rule needs its own check on this side of the boundary — an audit found
 // this file itself in violation, with nothing to catch it.
 func TestNoHandBuiltAidoPaths(t *testing.T) {
-	// Assembled rather than written out, so this test does not match itself.
-	needle := "." + config.DirName[1:]
+	// Derived from the constructor rather than from the constant: naming
+	// config.DirName here would trip this test's own DirName rule, and asking
+	// NewRoot is the very thing R1.2 says to do.
+	needle := filepath.Base(string(config.NewRoot("x")))
 	// internal/config owns the directory name; it is the one place allowed to
 	// spell it. Test files are scanned too — an audit found the violation in a
 	// fixture, not in shipped code.
-	owner := filepath.Join("internal", "config")
+	//
+	// Compared as path components, not as a string prefix: a future
+	// internal/configloader must not inherit the exemption.
+	owner := []string{"internal", "config"}
 
 	root, err := filepath.Abs("../..")
 	if err != nil {
@@ -89,7 +94,7 @@ func TestNoHandBuiltAidoPaths(t *testing.T) {
 			return nil
 		}
 		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil || strings.HasPrefix(rel, owner) {
+		if relErr != nil || underDir(rel, owner) {
 			return nil
 		}
 		file, parseErr := parser.ParseFile(fset, path, nil, 0)
@@ -98,6 +103,15 @@ func TestNoHandBuiltAidoPaths(t *testing.T) {
 		}
 		scanned++
 		ast.Inspect(file, func(n ast.Node) bool {
+			// AUDIT NN9: the evasion that matters is accidental, not
+			// adversarial. `config.DirName + "/config.yaml"` is what someone
+			// half-remembering R1.2 writes, and it is not a string constant, so
+			// referencing DirName at all outside its owner is the signal.
+			if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == "DirName" {
+				t.Errorf("%s: %s references config.DirName; build the path with config.NewRoot and its constructors instead",
+					fset.Position(sel.Pos()), rel)
+				return true
+			}
 			value, ok := stringValue(n)
 			if !ok || !strings.Contains(value, needle) {
 				return true
@@ -114,6 +128,21 @@ func TestNoHandBuiltAidoPaths(t *testing.T) {
 	if scanned == 0 {
 		t.Fatal("scanned no files; the check would pass vacuously")
 	}
+}
+
+// underDir reports whether the slash- or backslash-separated rel path lies
+// inside the directory named by parts.
+func underDir(rel string, parts []string) bool {
+	segments := strings.Split(filepath.ToSlash(rel), "/")
+	if len(segments) < len(parts) {
+		return false
+	}
+	for i, part := range parts {
+		if segments[i] != part {
+			return false
+		}
+	}
+	return true
 }
 
 // stringValue folds a string literal, or a concatenation of them, to its value.
@@ -144,6 +173,34 @@ func stringValue(n ast.Node) (string, bool) {
 		return left + right, true
 	}
 	return "", false
+}
+
+// AUDIT NN6, design.md I5: internal/config claims to make no network call, and
+// its own import test enforces that by name — which cannot see a transitive
+// dependency. This asserts the property itself against the real build graph.
+//
+// It lives here rather than in internal/config because that package bans
+// os/exec, and running `go list` needs it. The ban is why the check has to be
+// on this side; it is not a reason to skip the check.
+func TestConfigPackageHasNoNetworkDependency(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs go list")
+	}
+	out, err := exec.Command("go", "list", "-deps", "../../internal/config").Output()
+	if err != nil {
+		t.Fatalf("go list -deps: %v", err)
+	}
+	deps := strings.Fields(string(out))
+	if len(deps) == 0 {
+		t.Fatal("go list returned nothing; the check would pass vacuously")
+	}
+	banned := map[string]bool{"net": true, "net/http": true, "crypto/tls": true}
+	for _, dep := range deps {
+		if banned[dep] {
+			t.Errorf("internal/config transitively depends on %q; something pulled a transport package back in", dep)
+		}
+	}
+	t.Logf("internal/config dependency graph: %d packages", len(deps))
 }
 
 // show runs `config show` against dir and returns exit code, stdout, stderr.

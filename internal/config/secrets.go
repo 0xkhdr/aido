@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/go-git/go-billy/v5/osfs"
+	gitconfig "github.com/go-git/go-git/v5/plumbing/format/config"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"gopkg.in/yaml.v3"
@@ -190,22 +191,50 @@ func findRepository(dir string) (worktree, gitDir string, ok bool) {
 
 // relativeTo returns path relative to worktree in slash form, or "" when path
 // lies outside it. Both sides are symlink-resolved first.
+//
+// Neither the target nor any of its parents need exist. `.aido/` is routinely
+// absent on first run, and an earlier version treated that as "outside the
+// worktree", which turned a missing directory into a security refusal.
 func relativeTo(worktree, path string) (string, error) {
 	resolvedTree, err := filepath.EvalSymlinks(worktree)
 	if err != nil {
 		return "", fmt.Errorf("resolve %s: %w", worktree, err)
 	}
-	// The target itself need not exist yet — resolve its directory instead.
-	resolvedDir, err := filepath.EvalSymlinks(filepath.Dir(path))
+	resolvedPath, err := resolveExisting(path)
 	if err != nil {
-		// A missing parent directory cannot be inside anything.
-		return "", nil
+		return "", err
 	}
-	rel, err := filepath.Rel(resolvedTree, filepath.Join(resolvedDir, filepath.Base(path)))
+	rel, err := filepath.Rel(resolvedTree, resolvedPath)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", nil
 	}
 	return filepath.ToSlash(rel), nil
+}
+
+// resolveExisting symlink-resolves the deepest existing ancestor of path and
+// re-appends the components that do not exist yet. filepath.EvalSymlinks fails
+// outright on a missing path, but the ignore question is well defined for a
+// file that has not been created — that is the whole first-run case.
+func resolveExisting(path string) (string, error) {
+	path = filepath.Clean(path)
+	var missing []string
+	current := path
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			return filepath.Join(append([]string{resolved}, missing...)...), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("resolve %s: %w", path, err)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached the root without finding anything that exists.
+			return path, nil
+		}
+		missing = append([]string{filepath.Base(current)}, missing...)
+		current = parent
+	}
 }
 
 // trackedInIndex reports whether rel has an entry in the repository index.
@@ -235,29 +264,80 @@ func trackedInIndex(gitDir, rel string) (bool, error) {
 // precedence order (the matcher takes the last match).
 func ignorePatterns(worktree, gitDir string) ([]gitignore.Pattern, error) {
 	var patterns []gitignore.Pattern
-	root := osfs.New(string(filepath.Separator))
-	if system, err := gitignore.LoadSystemPatterns(root); err == nil {
-		patterns = append(patterns, system...)
-	}
-	if global, err := gitignore.LoadGlobalPatterns(root); err == nil {
-		patterns = append(patterns, global...)
-	}
-	// git's default global excludes file when core.excludesFile is unset.
-	if home, err := os.UserHomeDir(); err == nil {
-		xdg := os.Getenv("XDG_CONFIG_HOME")
-		if xdg == "" {
-			xdg = filepath.Join(home, ".config")
-		}
-		patterns = append(patterns, parseExcludeFile(filepath.Join(xdg, "git", "ignore"))...)
-	}
-	// .git/info/exclude — read directly, because go-git's worktree filesystem
-	// refuses a `.git` path component and swallows the resulting error.
-	patterns = append(patterns, parseExcludeFile(filepath.Join(gitDir, "info", "exclude"))...)
+	patterns = append(patterns, parseExcludeFile(excludesFile(systemGitConfig, ""))...)
+	patterns = append(patterns, parseExcludeFile(globalExcludesFile())...)
+	// .git/info/exclude belongs to the *common* git directory: a linked worktree
+	// has its own index but shares info/exclude with the main checkout.
+	patterns = append(patterns, parseExcludeFile(filepath.Join(commonDir(gitDir), "info", "exclude"))...)
 	repo, err := gitignore.ReadPatterns(osfs.New(worktree), nil)
 	if err != nil {
 		return nil, fmt.Errorf("read ignore patterns under %s: %w", worktree, err)
 	}
 	return append(patterns, repo...), nil
+}
+
+// systemGitConfig is git's system-wide configuration file.
+const systemGitConfig = "/etc/gitconfig"
+
+// globalExcludesFile returns the user's global ignore file: core.excludesFile
+// from ~/.gitconfig when set, otherwise git's documented default of
+// $XDG_CONFIG_HOME/git/ignore (~/.config/git/ignore).
+//
+// The fallback is a *default*, not an addition. Applying both would make aido
+// ignore a path git tracks — the one direction this check must never fail in.
+func globalExcludesFile() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	if configured := excludesFile(filepath.Join(home, ".gitconfig"), home); configured != "" {
+		return configured
+	}
+	xdg := os.Getenv("XDG_CONFIG_HOME")
+	if xdg == "" {
+		xdg = filepath.Join(home, ".config")
+	}
+	return filepath.Join(xdg, "git", "ignore")
+}
+
+// excludesFile reads core.excludesFile from a git config file, or "" when the
+// file or the key is absent. home, when non-empty, expands a leading ~.
+func excludesFile(configPath, home string) string {
+	file, err := os.Open(configPath)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	raw := gitconfig.New()
+	if err := gitconfig.NewDecoder(file).Decode(raw); err != nil {
+		return ""
+	}
+	value := raw.Section("core").Options.Get("excludesfile")
+	if value == "" {
+		return ""
+	}
+	if home != "" && strings.HasPrefix(value, "~/") {
+		return filepath.Join(home, value[2:])
+	}
+	return value
+}
+
+// commonDir resolves $GIT_COMMON_DIR for gitDir. A linked worktree's git
+// directory carries a `commondir` file pointing at the main one; everything
+// else is its own common directory.
+func commonDir(gitDir string) string {
+	data, err := os.ReadFile(filepath.Join(gitDir, "commondir"))
+	if err != nil {
+		return gitDir
+	}
+	target := strings.TrimSpace(string(data))
+	if target == "" {
+		return gitDir
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(gitDir, target)
+	}
+	return filepath.Clean(target)
 }
 
 // parseExcludeFile reads one gitignore-syntax file. A file that does not exist

@@ -21,9 +21,24 @@ var allowedModules = []string{
 	"github.com/go-git/go-billy/v5",
 }
 
+// forbiddenSubtrees are packages inside an allowed module that are not allowed.
+// Prefix matching on a module is convenient but blunt: go-git's transport
+// packages speak HTTP and SSH, and importing one would drag net/http and
+// crypto/tls back into a package whose whole claim is that it makes no network
+// call. The dependency-graph assertion in cmd/aido is the real guard; this
+// names the mistake at the import site, where it is cheaper to see.
+var forbiddenSubtrees = map[string]string{
+	"github.com/go-git/go-git/v5/plumbing/transport": "go-git's transport packages pull in net/http and crypto/tls (design.md I5)",
+}
+
 // allowedModule reports whether path is one of the allowed modules or lives
-// inside one.
+// inside one, and is not in a forbidden subtree.
 func allowedModule(path string) bool {
+	for prefix := range forbiddenSubtrees {
+		if path == prefix || strings.HasPrefix(path, prefix+"/") {
+			return false
+		}
+	}
 	for _, module := range allowedModules {
 		if path == module || strings.HasPrefix(path, module+"/") {
 			return true
@@ -122,6 +137,8 @@ func TestDisallowedImportIsCaught(t *testing.T) {
 		{"github.com/go-git/go-git/v5/plumbing/format/gitignore", false},
 		{"github.com/go-git/go-billy/v5/osfs", false},
 		{"github.com/go-git/go-git-evil/v5", true},
+		{"github.com/go-git/go-git/v5/plumbing/transport/http", true},
+		{"github.com/go-git/go-git/v5/plumbing/transport", true},
 	}
 	for _, tt := range tests {
 		got := disallowedImport(tt.path) != ""

@@ -2,12 +2,15 @@ package config
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
 const testKey = "sk-do-not-print-me-0123456789"
@@ -156,11 +159,30 @@ func TestResolveKeyNeverLeaksKeyIntoErrors(t *testing.T) {
 	}
 }
 
+// isolateGitEnvironment points HOME and XDG_CONFIG_HOME at an empty temp dir,
+// so no developer's real global git configuration reaches these tests.
+//
+// Without it the suite is not hermetic: an audit reproduced a failure by adding
+// `.aido/` to ~/.config/git/ignore — the most sensible thing a user of this tool
+// would do — and, worse, the test written to prove .git/info/exclude works
+// passed via the global rule instead, proving nothing.
+//
+// /etc/gitconfig cannot be redirected this way. It is left as a known gap; it
+// almost never sets core.excludesFile, and TestIgnoreSourcesAreIsolated below
+// fails loudly if the environment starts contributing patterns.
+func isolateGitEnvironment(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+}
+
 // gitProject returns a Root inside a real git repository, optionally with
 // .aido/.secrets.yaml git-ignored. The repository is created through go-git, so
 // nothing here depends on a git binary (tech.md T3) and no case can be skipped.
 func gitProject(t *testing.T, ignore bool) Root {
 	t.Helper()
+	isolateGitEnvironment(t)
 	dir := t.TempDir()
 	if _, err := git.PlainInit(dir, false); err != nil {
 		t.Fatalf("git init: %v", err)
@@ -304,6 +326,164 @@ func TestWriteSecretsThroughSymlinkedProjectPath(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(realDir, ".aido", ".secrets.yaml")); err != nil {
 		t.Errorf("secrets file not written through the symlink: %v", err)
+	}
+}
+
+// The negative control for the isolation above: with no ignore rule anywhere,
+// the write must be refused. If a developer's global git config leaked in, this
+// fails — which is what makes the positive tests meaningful.
+func TestIgnoreSourcesAreIsolated(t *testing.T) {
+	r := gitProject(t, false)
+	if err := WriteSecrets(r, map[string]string{"openai_api_key": testKey}); !errors.Is(err, ErrNotGitIgnored) {
+		t.Fatalf("err = %v, want ErrNotGitIgnored; an ignore rule reached the test from outside", err)
+	}
+}
+
+// AUDIT NN1, R4.6: .aido/ not existing yet is the first-run case, not a
+// security refusal. The ignore question is well defined for a file that has not
+// been created; only the write itself can fail, and it must fail as a missing
+// directory rather than as ErrNotGitIgnored.
+func TestWriteSecretsMissingAidoDirIsNotARefusal(t *testing.T) {
+	isolateGitEnvironment(t)
+	dir := t.TempDir()
+	if _, err := git.PlainInit(dir, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(".aido/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRoot(dir) // .aido/ deliberately not created
+	if _, err := os.Stat(r.String()); !os.IsNotExist(err) {
+		t.Fatalf("precondition: .aido/ should not exist, got %v", err)
+	}
+
+	// The ignore decision itself must succeed and say "ignored".
+	ignored, err := gitIgnores(dir, r.SecretsPath())
+	if err != nil {
+		t.Fatalf("gitIgnores() error = %v", err)
+	}
+	if !ignored {
+		t.Error("gitIgnores() = false for a path .gitignore covers but that does not exist yet")
+	}
+
+	err = WriteSecrets(r, map[string]string{"openai_api_key": testKey})
+	if err == nil {
+		t.Fatal("WriteSecrets() = nil, want a missing-directory error")
+	}
+	if errors.Is(err, ErrNotGitIgnored) {
+		t.Errorf("err = %v, want a missing-directory error, not a security refusal", err)
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("err = %v, want it to wrap fs.ErrNotExist", err)
+	}
+}
+
+// AUDIT NN3, R4.6: $XDG_CONFIG_HOME/git/ignore is git's *default* global
+// excludes file, used only when core.excludesFile is unset. Applying both would
+// let aido call a path ignored that git tracks — the one direction this check
+// must never fail in.
+func TestGlobalExcludesFileDefersToCoreExcludesFile(t *testing.T) {
+	isolateGitEnvironment(t)
+	home := os.Getenv("HOME")
+	xdg := filepath.Join(home, ".config", "git")
+	if err := os.MkdirAll(xdg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The XDG default says ignore .aido/; core.excludesFile points elsewhere and
+	// says nothing. git honours only the latter, so aido must too.
+	if err := os.WriteFile(filepath.Join(xdg, "ignore"), []byte(".aido/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "otherignore"), []byte("*.log\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"),
+		[]byte("[core]\n\texcludesfile = ~/otherignore\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := globalExcludesFile(); got != filepath.Join(home, "otherignore") {
+		t.Errorf("globalExcludesFile() = %q, want the configured core.excludesFile", got)
+	}
+	dir := t.TempDir()
+	if _, err := git.PlainInit(dir, false); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRoot(dir)
+	if err := os.MkdirAll(r.String(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSecrets(r, map[string]string{"openai_api_key": testKey}); !errors.Is(err, ErrNotGitIgnored) {
+		t.Fatalf("err = %v, want ErrNotGitIgnored: the XDG default must not apply when core.excludesFile is set", err)
+	}
+}
+
+// AUDIT NN5, R4.6: a linked worktree has its own index but shares
+// .git/info/exclude with the main checkout via $GIT_COMMON_DIR.
+func TestWriteSecretsInLinkedWorktree(t *testing.T) {
+	isolateGitEnvironment(t)
+	main := t.TempDir()
+	repo, err := git.PlainInit(main, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// info/exclude lives in the main .git and must reach the linked worktree.
+	info := filepath.Join(main, ".git", "info")
+	if err := os.MkdirAll(info, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(info, "exclude"), []byte(".aido/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A commit is needed before a worktree can be linked.
+	if err := os.WriteFile(filepath.Join(main, "README.md"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tree.Add("README.md"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tree.Commit("init", &git.CommitOptions{Author: &object.Signature{
+		Name: "t", Email: "t@example.com", When: time.Now(),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// go-git cannot create linked worktrees, so build one the way git does:
+	// a .git *file* pointing at .git/worktrees/<name>, which carries commondir.
+	linked := filepath.Join(t.TempDir(), "linked")
+	gitDir := filepath.Join(main, ".git", "worktrees", "linked")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(linked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"commondir": "../..\n",
+		"gitdir":    filepath.Join(linked, ".git") + "\n",
+		"HEAD":      "ref: refs/heads/master\n",
+	} {
+		if err := os.WriteFile(filepath.Join(gitDir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(linked, ".git"), []byte("gitdir: "+gitDir+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := commonDir(gitDir); got != filepath.Join(main, ".git") {
+		t.Errorf("commonDir() = %q, want the main git directory %q", got, filepath.Join(main, ".git"))
+	}
+	r := NewRoot(linked)
+	if err := os.MkdirAll(r.String(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSecrets(r, map[string]string{"openai_api_key": testKey}); err != nil {
+		t.Fatalf("WriteSecrets() = %v, want nil: info/exclude from the common git dir applies", err)
 	}
 }
 
