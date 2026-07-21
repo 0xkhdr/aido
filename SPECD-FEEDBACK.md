@@ -621,3 +621,56 @@ stated plainly and stays a proposal — never a self-applied change.
 - **Status:** open — **run-blocking**, superseding the earlier deadlock entry:
   the granular path and the brain path are now both refused for the same reason,
   one step deeper in.
+
+### 2026-07-21 — friction — the two files AGENTS.md requires an agent to touch are outside every task's scope
+
+- **Context:** spec `aido-config`, execute phase, `profile: default` (downgraded
+  by the operator after the AuthorityV1 deadlock), task T1, declared files
+  `go.mod, internal/config/paths.go, internal/config/paths_test.go`.
+  `specd verify aido-config T1` passes and records evidence at the current HEAD.
+  Completion then refuses:
+  ```
+  $ specd complete-task aido-config T1 --session ds-… --nonce …
+  OUTSIDE_SCOPE: task T1 changed files outside its declared scope:
+    SPECD-FEEDBACK.md is not declared by task T1 (modified); declare the path in the task's files cell or narrow the change
+    project.yml is not declared by task T1 (modified); declare the path in the task's files cell or narrow the change
+  ```
+- **Expected:** scope enforcement bounds the *task's work*. Both flagged files are
+  harness-workflow files, not spec deliverables: `AGENTS.md` in this repo
+  mandates appending to `SPECD-FEEDBACK.md` **during** the work ("append during
+  the work, not after"), and `project.yml` is operator-owned policy that had to
+  change before any verify could run at all.
+- **Actual:** every task's completion is refused until both files match the scope
+  baseline. Following the host guide's mandatory logging rule makes the task
+  uncompletable. The two obligations are in direct conflict.
+- **The baseline is sticky.** The scope base is not the previous commit. Both
+  files were committed in their own `chore(specd):` commit, separate from the
+  task commit per W4; completion still refuses. An empty probe commit
+  (`git commit --allow-empty`) followed by a fresh passing verify also still
+  refuses, so the base is not `HEAD~1` — it is pinned to the head recorded when
+  the task first produced evidence (`604435d`, the first line of
+  `evidence.jsonl`). `git diff --name-only 604435d..HEAD` is exactly the two
+  flagged files. Nothing an agent can legally do moves that base: reverting the
+  files restores `profile: production`, under which `verify` and `complete-task`
+  are refused for want of an unmintable AuthorityV1 packet.
+- **Root cause:** harness gap. Scope enforcement has no notion of a path that is
+  workflow-owned rather than task-owned, and the scope baseline never advances
+  for the task that is trying to complete.
+- **Recommendation:** (a) add an operator-declared scope exemption list to
+  `project.yml` — e.g. `scope.workflow_paths: SPECD-FEEDBACK.md,project.yml` —
+  for paths that are never task deliverables; feedback logs and operator config
+  are the obvious members, and specd already ships a security `allowlist`
+  concept to model it on; (b) exempt `project.yml` unconditionally, since specd
+  itself reads it and an operator unblocking a harness refusal must not thereby
+  break completion; (c) name the baseline in the error —
+  `OUTSIDE_SCOPE: … (scope baseline 604435d, recorded 2026-07-21T17:01:26Z)` —
+  the current message says "declare the path or narrow the change" while
+  narrowing is impossible and declaring requires re-approving an approved
+  `tasks.md`; (d) state in the error which human verb resolves it (`midreq`?
+  `exception approve`? re-approval?) — none of the five human-only verbs
+  documents scope amendment as its purpose.
+- **Not done:** `tasks.md` was not edited (approved artifact, human gate),
+  `evidence.jsonl` and `state.json` were not touched, and branch history was not
+  rewritten to hide the commit from the diff. The empty probe commit was reset.
+- **Status:** open — **run-blocking.** T1 has passing evidence at HEAD and
+  cannot be completed.

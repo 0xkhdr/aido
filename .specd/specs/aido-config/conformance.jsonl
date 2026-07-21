@@ -1,0 +1,1 @@
+{"kind":"work_without_bootstrap","slug":"aido-config","task_id":"T1","actor":"xkhdr","operation":"complete-task","detail":"mutable operation attempted without session bindings while session ds-a0f3fe44546239d3affcead73387b914 was open","timestamp":"2026-07-21T17:01:31Z"}

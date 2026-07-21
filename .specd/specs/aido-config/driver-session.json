@@ -1,0 +1,37 @@
+{
+  "id": "ds-491912193b3fbfdd8c118f2d3c4deff3",
+  "slug": "aido-config",
+  "driver": "claude-code",
+  "baseline_revision": 5,
+  "handshake_digest": "eec52c1c0f0a659d813e75adaf8add8cb93fb3bbd5c6d0bb26a3534235c6c22d",
+  "baseline_head": "3cf354aea8499db7cbb5a698ef3ae2bcf4b8bd9c",
+  "context_receipt": {
+    "schema_version": "1",
+    "manifest_digest": "2f1a19e66e36730f8f204a506798f93520f1a535f518e6a7de5e1564909a0752",
+    "host_id": "claude-code",
+    "driver_id": "claude-code",
+    "supplied_digests": [
+      "13eb265e946e2e55da98963babb63c5acafb5c4e4fdac35d88cab0478ea0030d",
+      "245bd00d50f5ab196f60fc6eec7724eae0153756af84e5c62e0f93b43ea6afb2",
+      "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
+      "50364dea4a11a9bb2d392a0ea88478a290a61755fbd8ab3d16bdc0df89c42dea",
+      "b553056dacc3d747182e6c7ad5ddfe77d993833fe43ce5869a83054f841f1b81",
+      "bae489ae737d2843e04cf152892272cd769cc9ef661f71eb67fb2227b6e3fed6",
+      "bb6065c1433e16a7bb86d9a4d8791a69ec12485db60f10ddbc8c95d98fa54df6",
+      "d732aa32a12ae458b8d0f1f91c7dce9eddebe5c9feb5635d76dd7e973afcf1e4",
+      "e18d82d23318477f0c6ac32b313f153bec7884a3780fcb449ada69cd7c13ab9f"
+    ],
+    "missing_digests": [],
+    "reported_tokens": 12000,
+    "receipt_digest": "975b0bc206797444dc1b359bb881930ff487acea8b4e4d69f07ab77766f03ddc"
+  },
+  "authority_digest": "993679dc6a2e6716449916beca9a271007af538e42c0e700635a0f67ea270490",
+  "issued_at": "2026-07-21T17:02:02.144327082Z",
+  "expires_at": "2026-07-21T19:02:02.144327082Z",
+  "spent_nonces": [
+    "9855a532af362853b02cae2bd7ac77f9",
+    "57e6a03012d1989a2725ac7b82d22cee",
+    "f7583c1bb448f380a0be98835b26e814"
+  ],
+  "revision": 6
+}
