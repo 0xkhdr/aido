@@ -888,3 +888,35 @@ stated plainly and stays a proposal — never a self-applied change.
   under its own acceptance id, and this gap is being carried to T8's audit as a
   finding rather than quietly closed.
 - **Status:** open
+
+### 2026-07-21 — correction — what actually re-pinned the baseline was a *failed* `brain run`, not `brain resume`
+
+- **Corrects:** the entry "`brain resume` re-mints the mission at current HEAD but
+  reports 'no dispatch to re-issue'" above. Its observation was right and its
+  attribution was wrong. Recorded rather than edited, per this file's rules.
+- **What actually happened:** `sessionDispatcher.Dispatch` writes the
+  write-ahead checkpoint *before* appending to the ledger
+  (`brain_run.go`, `SaveCheckpoint` then `AppendDispatch`). The `brain run` that
+  died on `duplicate mission id` had therefore already overwritten
+  `checkpoint.json` with a freshly minted mission carrying
+  `SubjectHead: gitHead(root)` — the current HEAD. `brain resume` then
+  reconciled that checkpoint into `session.json`, and merely *carried* the new
+  baseline. `brainResumeLocked` sets no `SubjectHead` of its own.
+- **Why this is worse than the original report:** a command that exits non-zero
+  left durable state behind, and that side effect is the only reason the run
+  became unblocked. Nothing tells the operator this. The write-ahead ordering is
+  correct and deliberate for crash recovery; what is missing is that a *refused*
+  dispatch leaves a checkpoint describing a dispatch that never entered the
+  ledger — indistinguishable, on disk, from a crash.
+- **Consequence for the recovery recipe:** "run `brain resume`" is not
+  sufficient on its own. The sequence that works is `brain run` (fails, rewrites
+  the checkpoint at HEAD) then `brain resume` (adopts it). Verified again this
+  run: with T4 withheld, `brain run` prints `wait` without attempting a
+  dispatch, writes no checkpoint, and `brain resume` consequently has nothing
+  fresh to adopt — so the stale mission stays stale and the only remedy is
+  waiting out its TTL.
+- **Recommendation:** on a refused dispatch, remove or mark the checkpoint the
+  attempt just wrote (`decision: "dispatch-refused"`), so a later `resume`
+  cannot silently adopt a mission the ledger rejected. If the adoption is
+  intended, make it explicit and print the re-pin.
+- **Status:** open
