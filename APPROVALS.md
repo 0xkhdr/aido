@@ -309,3 +309,43 @@ _Entries appended below as the run proceeds._
   its report is pinned to `5168581`, which is no longer HEAD. Do you want the
   auditor re-run against `aa3dd69` once F2/F3/F5 are addressed, or a fresh audit
   now covering only the delta?
+
+### aido-config · two operator rulings, carried out — **still not approved**
+
+- **Rulings taken:** (1) narrow to go-git's plumbing packages rather than its
+  root package; (2) update the steering docs to match the Go floor rather than
+  hold 1.22.
+- **Ruling 1 — done, commit `6d1fa4b`.** `gitIgnores` no longer opens a
+  repository through go-git's root package: it locates the worktree itself,
+  decodes `.git/index` via `plumbing/format/index` for the tracked check, and
+  assembles ignore patterns in git's precedence order — system config, global
+  config, `$XDG_CONFIG_HOME/git/ignore`, `.git/info/exclude` read directly, then
+  repo `.gitignore` files. Measured: `internal/config`'s dependency graph 337 →
+  112 packages, `net`/`net/http`/`crypto/tls` gone from it, binary 9.1M → 4.1M.
+  Symlinked project paths resolve (N7). The R1.2 checker now folds string
+  concatenation and scans the whole module (N5), verified against probes in two
+  packages.
+- **Ruling 2 — done, and it edits artifacts I would normally refuse to touch.**
+  `.specd/steering/tech.md` sits under `harnessProtectedPrefixes`, and
+  `requirements.md` is a `harnessProtected` basename whose approval record
+  carries `source_digest: 13eb265e…`. Both now say Go 1.25, with the reason and
+  the date inline. **`specd check` reported exit 0, no output, afterwards** —
+  the approval digest is stored and never re-checked. Logged; it is the fourth
+  finding whose fix is "make `check` report what it already knows".
+- **Why I still have not approved completion:** I recorded criterion 4.6 `pass`
+  on the previous version of this code and the auditor proved that wrong — the
+  go-git port silently dropped `.git/info/exclude`. I retracted that record
+  rather than leave it standing. Certifying the replacement on my own say-so
+  would repeat exactly the mistake, so 4.6 stays `fail` until the auditor
+  verifies the rewrite. A third audit pass is running against `6d1fa4b`.
+- **Current blockers, unchanged in kind:**
+  ```
+  blocker: criteria.required: 1 acceptance criterion/criteria lack a current passing record: 4.6
+  blocker: review.required: review report verdict "needs-changes — see …" is not one of approve|reject|needs-changes
+  ```
+  The second is a formatting artifact — the auditor annotated the verdict line —
+  not a second opinion.
+- **Would have asked you:** the Go floor is now 1.25 in steering and in R1.1,
+  but `aido-blueprint-v1.0.md:402` still says "Go 1.22+". The blueprint is
+  source material rather than an approved artifact, so I left it alone. Say if
+  you want it amended too, or a note added that steering supersedes it.

@@ -1213,3 +1213,61 @@ stated plainly and stays a proposal — never a self-applied change.
 - **Status:** open — this is the gap between "specd builds software" and "specd
   maintains software". Every audit finding in this run landed in a file owned by
   a task that had already closed.
+
+### 2026-07-21 — friction — approved artifacts and steering can be edited with no gate reaction at all
+
+- **Context:** spec `aido-config`, verify phase. On an operator ruling, the Go
+  floor was raised in two files: `.specd/steering/tech.md` (a
+  `harnessProtectedPrefixes` path — "no task may edit") and
+  `.specd/specs/aido-config/requirements.md` (a `harnessProtected` basename, and
+  an artifact whose approval record in `state.json` carries
+  `"source_digest": "13eb265e…"`).
+- **Expected:** at minimum a warning. `state.json` stores the digest of the
+  requirements text that was approved; changing that text should make the
+  approval visibly stale.
+- **Actual:** `specd check aido-config` → **exit 0, no output.**
+  `specd status --guide` lists its two real blockers and says nothing about
+  either edited file. Nothing anywhere reports that the approved requirements no
+  longer match what was approved, or that a steering rule changed mid-spec.
+- **Note the asymmetry:** `CheckDiffScope` refuses these exact paths when a
+  *task* touches them — `harnessOwned()` names `tasks.md`, `requirements.md`,
+  `design.md`, `.specd/roles/`, `.specd/steering/`. But that check only runs
+  inside `complete-task`. Edit the same files outside a task completion and no
+  code path looks at them. The protection is attached to one verb, not to the
+  files.
+- **Root cause:** harness gap. The approval digest is recorded and never
+  re-checked.
+- **Recommendation:** (a) have `specd check` re-hash each approved artifact
+  against its `source_digest` and report drift —
+  `requirements.md changed since approval 13eb265e (approved 16:32Z); re-approve
+  or revert`; (b) treat a steering change during an open spec as a first-class
+  event, since every downstream artifact was authored against the old text;
+  (c) this is the fourth entry in this file whose fix is the same sentence:
+  **make `specd check` report what it already knows.**
+- **Status:** open
+
+### 2026-07-21 — improvement — the review-verdict gate wants an exact token but the scaffold invites prose
+
+- **Context:** the auditor set the verdict field to
+  `needs-changes — see "re-audit at ddf549b" at the end of this document; that
+  section, not the original findings list, is the current call.` The gate:
+  ```
+  blocker: review.required: review report verdict "needs-changes — see …" is not one of approve|reject|needs-changes
+  ```
+- **Observation:** the refusal is *good* — it quotes the whole offending string,
+  so the cause is obvious. The problem is upstream: the scaffold writes
+  `- **Verdict:** <approve | reject | needs-changes>` with no statement that the
+  value must be exactly one token and nothing else on the line. A reviewer whose
+  report has grown a second section naturally wants to point at it from the
+  verdict line, and that silently converts a `needs-changes` into an unparseable
+  one — which happens to fail closed here, but only by luck.
+- **Cost:** one gate round trip, and a verdict that reads as unset when it is
+  merely annotated.
+- **Recommendation:** say it in the scaffold comment — "the Verdict line must
+  contain exactly one of these three words and nothing else; put commentary in
+  Findings" — and accept a trailing `—`-delimited note by parsing the first
+  token, which the gate is already one `strings.Fields` call away from.
+- **Tradeoff:** none for the scaffold text. Loosening the parser trades a hair
+  of strictness for a failure mode that currently punishes a conscientious
+  reviewer.
+- **Status:** open
