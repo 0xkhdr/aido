@@ -12,14 +12,23 @@ import (
 
 // allowedModules is the entire non-stdlib import surface this package may have
 // (tech.md T1). Adding to it is a steering decision, not a code change.
-var allowedModules = map[string]bool{"gopkg.in/yaml.v3": true}
+var allowedModules = map[string]bool{
+	"gopkg.in/yaml.v3":                                      true,
+	"github.com/go-git/go-git/v5":                           true,
+	"github.com/go-git/go-git/v5/plumbing/format/gitignore": true,
+}
 
 // forbidden names imports that are banned outright regardless of origin:
 // net/http because this package makes no network call (invariant I5, T5), C
-// because the build must stay CGO_ENABLED=0 (R1.1, T3).
+// because the build must stay CGO_ENABLED=0 (R1.1, T3), and os/exec because
+// T3's other half — "a runtime that requires the git binary on PATH is
+// refused" — is unenforceable otherwise. os/exec is standard library, so the
+// allowlist alone would have let it through, and did: this package shipped a
+// `git check-ignore` subprocess past every gate until an audit caught it.
 var forbidden = map[string]string{
 	"net/http": "internal/config makes no network call (design.md I5)",
-	"C":        "the build must stay CGO_ENABLED=0 (R1.1)",
+	"C":        "the build must stay CGO_ENABLED=0 (R1.1, tech.md T3)",
+	"os/exec":  "no shelling out; git operations go through go-git (tech.md T3)",
 }
 
 // disallowedImport returns the reason path may not be imported, or "".
@@ -94,6 +103,8 @@ func TestDisallowedImportIsCaught(t *testing.T) {
 		{"C", true},
 		{"github.com/spf13/viper", true},
 		{"github.com/zalando/go-keyring", true},
+		{"os/exec", true},
+		{"github.com/go-git/go-git/v5", false},
 	}
 	for _, tt := range tests {
 		got := disallowedImport(tt.path) != ""

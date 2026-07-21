@@ -3,10 +3,11 @@ package config
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/go-git/go-git/v5"
 )
 
 const testKey = "sk-do-not-print-me-0123456789"
@@ -156,15 +157,13 @@ func TestResolveKeyNeverLeaksKeyIntoErrors(t *testing.T) {
 }
 
 // gitProject returns a Root inside a real git repository, optionally with
-// .aido/.secrets.yaml git-ignored.
+// .aido/.secrets.yaml git-ignored. The repository is created through go-git, so
+// nothing here depends on a git binary (tech.md T3) and no case can be skipped.
 func gitProject(t *testing.T, ignore bool) Root {
 	t.Helper()
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not available")
-	}
 	dir := t.TempDir()
-	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v: %s", err, out)
+	if _, err := git.PlainInit(dir, false); err != nil {
+		t.Fatalf("git init: %v", err)
 	}
 	r := NewRoot(dir)
 	if err := os.MkdirAll(r.String(), 0o755); err != nil {
@@ -212,6 +211,60 @@ func TestWriteSecretsRefusesTrackedPath(t *testing.T) {
 	}
 	if _, statErr := os.Stat(r.SecretsPath()); !os.IsNotExist(statErr) {
 		t.Errorf("secrets file exists after a refused write")
+	}
+}
+
+// R4.6: a tracked .secrets.yaml is refused even when a pattern would ignore it.
+// Tracking beats ignoring in git, and a tracked secrets file is exactly the leak
+// this guard exists to prevent.
+func TestWriteSecretsRefusesTrackedFile(t *testing.T) {
+	r := gitProject(t, true)
+	if err := os.WriteFile(r.SecretsPath(), []byte("openai_api_key: old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := git.PlainOpen(filepath.Dir(r.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := repo.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// --force, because the path is ignored: this reproduces the mistake of a
+	// user who committed the file before the ignore rule existed.
+	if err := tree.AddWithOptions(&git.AddOptions{Path: ".aido/.secrets.yaml"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSecrets(r, map[string]string{"openai_api_key": testKey}); !errors.Is(err, ErrNotGitIgnored) {
+		t.Fatalf("err = %v, want errors.Is(err, ErrNotGitIgnored) for a tracked file", err)
+	}
+	data, err := os.ReadFile(r.SecretsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), testKey) {
+		t.Error("the refused write reached the file")
+	}
+}
+
+// R4.3: the file exists and parses, but holds no key for the provider — the
+// path that reaches the final not-found return rather than an earlier one.
+func TestResolveKeyPresentFileMissingProviderKey(t *testing.T) {
+	r := project(t, "anthropic_api_key: "+testKey+"\n")
+	t.Setenv("OPENAI_API_KEY", "")
+	c := withProvider("openai", "env:OPENAI_API_KEY")
+	got, err := c.ResolveKey(r, "openai")
+	if !errors.Is(err, ErrKeyNotFound) {
+		t.Fatalf("err = %v, want errors.Is(err, ErrKeyNotFound)", err)
+	}
+	if got != "" {
+		t.Errorf("key = %q, want empty", got)
+	}
+	if !strings.Contains(err.Error(), r.SecretsPath()) {
+		t.Errorf("error %q does not name the secrets file it consulted", err)
+	}
+	if strings.Contains(err.Error(), testKey) {
+		t.Errorf("error %q leaks another provider's key", err)
 	}
 }
 

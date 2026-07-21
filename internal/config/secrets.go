@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strings"
 
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"gopkg.in/yaml.v3"
 )
 
@@ -85,7 +87,9 @@ func (c *Config) ResolveKey(r Root, provider string) (string, error) {
 // It is the only function in this package that writes a key anywhere.
 func WriteSecrets(r Root, secrets map[string]string) error {
 	path := r.SecretsPath()
-	ignored, err := gitIgnores(r.String(), path)
+	// The project directory, not .aido/ itself: .aido/ need not exist yet, and
+	// repository discovery must start from a directory that does.
+	ignored, err := gitIgnores(filepath.Dir(string(r)), path)
 	if err != nil {
 		return err
 	}
@@ -101,21 +105,44 @@ func WriteSecrets(r Root, secrets map[string]string) error {
 	return WriteFile(path, data, 0o600)
 }
 
-// gitIgnores reports whether git ignores path. A path outside any repository
-// counts as not ignored: nothing is protecting it.
-func gitIgnores(dir, path string) (bool, error) {
-	cmd := exec.Command("git", "check-ignore", "-q", "--", path)
-	cmd.Dir = dir
-	err := cmd.Run()
-	if err == nil {
-		return true, nil
+// gitIgnores reports whether git ignores path, resolving the repository from
+// projectDir upwards.
+//
+// It uses go-git rather than the git binary: `tech.md` T3 refuses a runtime that
+// requires `git` on PATH.
+//
+// Two cases deliberately report false — "nothing is protecting this path":
+//   - projectDir is not inside a repository, so no .gitignore governs it;
+//   - the file is already tracked in the index, which in git beats any ignore
+//     rule. A tracked .secrets.yaml is the leak R4.6 exists to prevent, so it
+//     must refuse rather than trust the pattern.
+func gitIgnores(projectDir, path string) (bool, error) {
+	repo, err := git.PlainOpenWithOptions(projectDir, &git.PlainOpenOptions{DetectDotGit: true})
+	if err != nil {
+		return false, nil
 	}
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		// 1 = not ignored, 128 = not a git repository. Both mean unprotected.
-		if code := exit.ExitCode(); code == 1 || code == 128 {
+	tree, err := repo.Worktree()
+	if err != nil {
+		return false, fmt.Errorf("open worktree for %s: %w", path, err)
+	}
+	rel, err := filepath.Rel(tree.Filesystem.Root(), path)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		// Outside the worktree the repository's ignore rules say nothing.
+		return false, nil
+	}
+	rel = filepath.ToSlash(rel)
+	index, err := repo.Storer.Index()
+	if err != nil {
+		return false, fmt.Errorf("read index for %s: %w", path, err)
+	}
+	for _, entry := range index.Entries {
+		if entry.Name == rel {
 			return false, nil
 		}
 	}
-	return false, fmt.Errorf("git check-ignore %s: %w", path, err)
+	patterns, err := gitignore.ReadPatterns(tree.Filesystem, nil)
+	if err != nil {
+		return false, fmt.Errorf("read ignore patterns for %s: %w", path, err)
+	}
+	return gitignore.NewMatcher(patterns).Match(strings.Split(rel, "/"), false), nil
 }
