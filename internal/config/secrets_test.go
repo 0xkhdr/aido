@@ -268,6 +268,45 @@ func TestResolveKeyPresentFileMissingProviderKey(t *testing.T) {
 	}
 }
 
+// R4.6, AUDIT N1: .git/info/exclude counts. It is the canonical place to ignore
+// a local tool directory without touching a shared .gitignore, and the previous
+// implementation silently read none of it — go-git's worktree filesystem
+// rejects a `.git` path component and ReadPatterns discards the error.
+func TestWriteSecretsHonoursInfoExclude(t *testing.T) {
+	r := gitProject(t, false) // no .gitignore at all
+	info := filepath.Join(filepath.Dir(r.String()), ".git", "info")
+	if err := os.MkdirAll(info, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(info, "exclude"), []byte("# local only\n.aido/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSecrets(r, map[string]string{"openai_api_key": testKey}); err != nil {
+		t.Fatalf("WriteSecrets() = %v, want nil for a path ignored via .git/info/exclude", err)
+	}
+	if _, err := os.Stat(r.SecretsPath()); err != nil {
+		t.Errorf("secrets file not written: %v", err)
+	}
+}
+
+// R4.6, AUDIT N7: a project reached through a symlinked parent is still inside
+// its own worktree. Every macOS os.MkdirTemp produces exactly this shape.
+func TestWriteSecretsThroughSymlinkedProjectPath(t *testing.T) {
+	r := gitProject(t, true)
+	realDir := filepath.Dir(r.String())
+	link := filepath.Join(t.TempDir(), "linked")
+	if err := os.Symlink(realDir, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	linked := NewRoot(link)
+	if err := WriteSecrets(linked, map[string]string{"openai_api_key": testKey}); err != nil {
+		t.Fatalf("WriteSecrets() = %v, want nil through a symlinked project path", err)
+	}
+	if _, err := os.Stat(filepath.Join(realDir, ".aido", ".secrets.yaml")); err != nil {
+		t.Errorf("secrets file not written through the symlink: %v", err)
+	}
+}
+
 // R4.6: outside a git repository nothing is protecting the path, so the write
 // is refused there too.
 func TestWriteSecretsRefusesOutsideRepository(t *testing.T) {

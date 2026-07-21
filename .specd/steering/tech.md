@@ -31,7 +31,10 @@ authority. Anything unresolved is in `reasoning.md`, not invented here.
 
 ## Stack — Aido Core (this repo's primary artifact)
 
-- **Language / runtime:** Go 1.22 or newer. Single static binary. `CGO_ENABLED=0`.
+- **Language / runtime:** Go 1.25 or newer. Single static binary. `CGO_ENABLED=0`.
+  Raised from 1.22 on 2026-07-21 by operator ruling: `github.com/go-git/go-git`,
+  already on the T1 allowlist, declares `go 1.25.0` in its own `go.mod`, so the
+  floor moves with it. Go 1.22-1.24 can no longer build aido-core.
 - **Build:** `go build ./...`
 - **Test:** `go test ./...`
 - **Vet:** `go vet ./...`

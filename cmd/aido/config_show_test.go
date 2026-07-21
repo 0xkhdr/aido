@@ -64,33 +64,86 @@ func projectDir(t *testing.T, configBody string) string {
 func TestNoHandBuiltAidoPaths(t *testing.T) {
 	// Assembled rather than written out, so this test does not match itself.
 	needle := "." + config.DirName[1:]
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", nil, 0)
+	// internal/config owns the directory name; it is the one place allowed to
+	// spell it. Test files are scanned too — an audit found the violation in a
+	// fixture, not in shipped code.
+	owner := filepath.Join("internal", "config")
+
+	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := 0
-	for _, pkg := range pkgs {
-		for _, file := range pkg.Files {
-			ast.Inspect(file, func(n ast.Node) bool {
-				lit, ok := n.(*ast.BasicLit)
-				if !ok || lit.Kind != token.STRING {
-					return true
-				}
-				value, err := strconv.Unquote(lit.Value)
-				if err != nil || !strings.Contains(value, needle) {
-					return true
-				}
-				found++
-				t.Errorf("%s builds a %s path from a string literal %q; use config.NewRoot and its constructors",
-					fset.Position(lit.Pos()), needle, value)
-				return true
-			})
+	fset := token.NewFileSet()
+	scanned := 0
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
+		if d.IsDir() {
+			if name := d.Name(); name == ".git" || name == ".specd" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil || strings.HasPrefix(rel, owner) {
+			return nil
+		}
+		file, parseErr := parser.ParseFile(fset, path, nil, 0)
+		if parseErr != nil {
+			return parseErr
+		}
+		scanned++
+		ast.Inspect(file, func(n ast.Node) bool {
+			value, ok := stringValue(n)
+			if !ok || !strings.Contains(value, needle) {
+				return true
+			}
+			t.Errorf("%s: %s builds a %s path from a string constant %q; use config.NewRoot and its constructors",
+				fset.Position(n.Pos()), rel, needle, value)
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if found == 0 && testing.Verbose() {
-		t.Logf("no hand-built %s paths in package main", needle)
+	if scanned == 0 {
+		t.Fatal("scanned no files; the check would pass vacuously")
 	}
+}
+
+// stringValue folds a string literal, or a concatenation of them, to its value.
+// Folding matters: "." + "aido" is the obvious way to slip a hand-built path
+// past a literal-only scan, and an audit pointed out that this very test used
+// to do exactly that to avoid matching itself.
+//
+// Known ceiling: only literal operands fold. `"." + someVar` still escapes,
+// which needs go/types constant evaluation. Upgrade if a real evasion appears —
+// the point here is to make the accident loud, not to defeat an adversary.
+func stringValue(n ast.Node) (string, bool) {
+	switch e := n.(type) {
+	case *ast.BasicLit:
+		if e.Kind != token.STRING {
+			return "", false
+		}
+		value, err := strconv.Unquote(e.Value)
+		return value, err == nil
+	case *ast.BinaryExpr:
+		if e.Op != token.ADD {
+			return "", false
+		}
+		left, okLeft := stringValue(e.X)
+		right, okRight := stringValue(e.Y)
+		if !okLeft || !okRight {
+			return "", false
+		}
+		return left + right, true
+	}
+	return "", false
 }
 
 // show runs `config show` against dir and returns exit code, stdout, stderr.

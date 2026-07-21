@@ -12,10 +12,24 @@ import (
 
 // allowedModules is the entire non-stdlib import surface this package may have
 // (tech.md T1). Adding to it is a steering decision, not a code change.
-var allowedModules = map[string]bool{
-	"gopkg.in/yaml.v3":                                      true,
-	"github.com/go-git/go-git/v5":                           true,
-	"github.com/go-git/go-git/v5/plumbing/format/gitignore": true,
+// Entries are module paths; a subpackage of an allowed module is allowed.
+// go-billy is go-git's filesystem interface and arrives only through it, so it
+// rides on the same T1 entry rather than being a separate dependency decision.
+var allowedModules = []string{
+	"gopkg.in/yaml.v3",
+	"github.com/go-git/go-git/v5",
+	"github.com/go-git/go-billy/v5",
+}
+
+// allowedModule reports whether path is one of the allowed modules or lives
+// inside one.
+func allowedModule(path string) bool {
+	for _, module := range allowedModules {
+		if path == module || strings.HasPrefix(path, module+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // forbidden names imports that are banned outright regardless of origin:
@@ -42,7 +56,7 @@ func disallowedImport(path string) string {
 	if !strings.Contains(first, ".") {
 		return ""
 	}
-	if allowedModules[path] {
+	if allowedModule(path) {
 		return ""
 	}
 	return "not in the tech.md T1 allowlist"
@@ -105,6 +119,9 @@ func TestDisallowedImportIsCaught(t *testing.T) {
 		{"github.com/zalando/go-keyring", true},
 		{"os/exec", true},
 		{"github.com/go-git/go-git/v5", false},
+		{"github.com/go-git/go-git/v5/plumbing/format/gitignore", false},
+		{"github.com/go-git/go-billy/v5/osfs", false},
+		{"github.com/go-git/go-git-evil/v5", true},
 	}
 	for _, tt := range tests {
 		got := disallowedImport(tt.path) != ""

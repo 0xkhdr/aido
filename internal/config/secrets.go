@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
+	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"gopkg.in/yaml.v3"
 )
 
@@ -108,41 +109,170 @@ func WriteSecrets(r Root, secrets map[string]string) error {
 // gitIgnores reports whether git ignores path, resolving the repository from
 // projectDir upwards.
 //
-// It uses go-git rather than the git binary: `tech.md` T3 refuses a runtime that
-// requires `git` on PATH.
+// It uses go-git's format packages rather than the git binary (`tech.md` T3
+// refuses a runtime that requires `git` on PATH) and deliberately not go-git's
+// root package, which pulls net/http and crypto/tls into this package's
+// dependency graph for a check that touches only local files.
 //
-// Two cases deliberately report false — "nothing is protecting this path":
-//   - projectDir is not inside a repository, so no .gitignore governs it;
+// Every source git consults is consulted here, in git's own precedence order:
+// /etc/gitconfig's core.excludesFile, then the user's global excludes, then
+// .git/info/exclude, then the repository's .gitignore files. An earlier
+// version delegated to gitignore.ReadPatterns alone, which silently dropped
+// .git/info/exclude because go-git's worktree filesystem rejects a `.git` path
+// component and ReadPatterns discards that error.
+//
+// Three cases deliberately report false — "nothing is protecting this path":
+//   - projectDir is not inside a repository with a worktree;
+//   - path lies outside that worktree;
 //   - the file is already tracked in the index, which in git beats any ignore
-//     rule. A tracked .secrets.yaml is the leak R4.6 exists to prevent, so it
-//     must refuse rather than trust the pattern.
+//     rule. A tracked .secrets.yaml is the leak R4.6 exists to prevent.
 func gitIgnores(projectDir, path string) (bool, error) {
-	repo, err := git.PlainOpenWithOptions(projectDir, &git.PlainOpenOptions{DetectDotGit: true})
-	if err != nil {
+	worktree, gitDir, ok := findRepository(projectDir)
+	if !ok {
 		return false, nil
 	}
-	tree, err := repo.Worktree()
-	if err != nil {
-		return false, fmt.Errorf("open worktree for %s: %w", path, err)
+	// Resolve symlinks on both sides before relating them: a project reached
+	// through a symlinked parent (every macOS os.MkdirTemp, for one) otherwise
+	// looks like it lies outside its own worktree.
+	rel, err := relativeTo(worktree, path)
+	if err != nil || rel == "" {
+		return false, err
 	}
-	rel, err := filepath.Rel(tree.Filesystem.Root(), path)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		// Outside the worktree the repository's ignore rules say nothing.
+	tracked, err := trackedInIndex(gitDir, rel)
+	if err != nil {
+		return false, err
+	}
+	if tracked {
 		return false, nil
 	}
-	rel = filepath.ToSlash(rel)
-	index, err := repo.Storer.Index()
+	patterns, err := ignorePatterns(worktree, gitDir)
 	if err != nil {
-		return false, fmt.Errorf("read index for %s: %w", path, err)
-	}
-	for _, entry := range index.Entries {
-		if entry.Name == rel {
-			return false, nil
-		}
-	}
-	patterns, err := gitignore.ReadPatterns(tree.Filesystem, nil)
-	if err != nil {
-		return false, fmt.Errorf("read ignore patterns for %s: %w", path, err)
+		return false, err
 	}
 	return gitignore.NewMatcher(patterns).Match(strings.Split(rel, "/"), false), nil
+}
+
+// findRepository walks up from dir to the worktree root, returning it and the
+// git directory. A `.git` file (submodule or linked worktree) is followed.
+func findRepository(dir string) (worktree, gitDir string, ok bool) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", "", false
+	}
+	for {
+		candidate := filepath.Join(dir, ".git")
+		info, err := os.Stat(candidate)
+		switch {
+		case err == nil && info.IsDir():
+			return dir, candidate, true
+		case err == nil:
+			// `gitdir: <path>`, absolute or relative to the worktree.
+			data, readErr := os.ReadFile(candidate)
+			if readErr != nil {
+				return "", "", false
+			}
+			target := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(data)), "gitdir:"))
+			if target == "" {
+				return "", "", false
+			}
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(dir, target)
+			}
+			return dir, filepath.Clean(target), true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", "", false
+		}
+		dir = parent
+	}
+}
+
+// relativeTo returns path relative to worktree in slash form, or "" when path
+// lies outside it. Both sides are symlink-resolved first.
+func relativeTo(worktree, path string) (string, error) {
+	resolvedTree, err := filepath.EvalSymlinks(worktree)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", worktree, err)
+	}
+	// The target itself need not exist yet — resolve its directory instead.
+	resolvedDir, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		// A missing parent directory cannot be inside anything.
+		return "", nil
+	}
+	rel, err := filepath.Rel(resolvedTree, filepath.Join(resolvedDir, filepath.Base(path)))
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", nil
+	}
+	return filepath.ToSlash(rel), nil
+}
+
+// trackedInIndex reports whether rel has an entry in the repository index.
+func trackedInIndex(gitDir, rel string) (bool, error) {
+	file, err := os.Open(filepath.Join(gitDir, "index"))
+	if errors.Is(err, fs.ErrNotExist) {
+		// A repository with no index yet tracks nothing.
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("open git index: %w", err)
+	}
+	defer file.Close()
+	var idx index.Index
+	if err := index.NewDecoder(file).Decode(&idx); err != nil {
+		return false, fmt.Errorf("decode git index: %w", err)
+	}
+	for _, entry := range idx.Entries {
+		if entry.Name == rel {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// ignorePatterns collects every ignore source git would consult, in ascending
+// precedence order (the matcher takes the last match).
+func ignorePatterns(worktree, gitDir string) ([]gitignore.Pattern, error) {
+	var patterns []gitignore.Pattern
+	root := osfs.New(string(filepath.Separator))
+	if system, err := gitignore.LoadSystemPatterns(root); err == nil {
+		patterns = append(patterns, system...)
+	}
+	if global, err := gitignore.LoadGlobalPatterns(root); err == nil {
+		patterns = append(patterns, global...)
+	}
+	// git's default global excludes file when core.excludesFile is unset.
+	if home, err := os.UserHomeDir(); err == nil {
+		xdg := os.Getenv("XDG_CONFIG_HOME")
+		if xdg == "" {
+			xdg = filepath.Join(home, ".config")
+		}
+		patterns = append(patterns, parseExcludeFile(filepath.Join(xdg, "git", "ignore"))...)
+	}
+	// .git/info/exclude — read directly, because go-git's worktree filesystem
+	// refuses a `.git` path component and swallows the resulting error.
+	patterns = append(patterns, parseExcludeFile(filepath.Join(gitDir, "info", "exclude"))...)
+	repo, err := gitignore.ReadPatterns(osfs.New(worktree), nil)
+	if err != nil {
+		return nil, fmt.Errorf("read ignore patterns under %s: %w", worktree, err)
+	}
+	return append(patterns, repo...), nil
+}
+
+// parseExcludeFile reads one gitignore-syntax file. A file that does not exist
+// or cannot be read contributes nothing: these are advisory sources, and git
+// treats an unreadable one the same way.
+func parseExcludeFile(path string) []gitignore.Pattern {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var patterns []gitignore.Pattern
+	for _, line := range strings.Split(string(data), "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			patterns = append(patterns, gitignore.ParsePattern(line, nil))
+		}
+	}
+	return patterns
 }

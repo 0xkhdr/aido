@@ -14,7 +14,7 @@ owner: unassigned (unattended run; see APPROVALS.md)
 priority: must
 risk: medium
 
-- R1.1: When the repository is built, the system shall compile as a single Go module targeting Go 1.22 or newer with `CGO_ENABLED=0` and no cgo dependency.
+- R1.1: When the repository is built, the system shall compile as a single Go module targeting Go 1.25 or newer with `CGO_ENABLED=0` and no cgo dependency. (Amended 2026-07-21 by operator ruling from "1.22 or newer"; see `.specd/steering/tech.md` and `APPROVALS.md`. This edits an approved artifact and invalidates its approval digest deliberately.)
 - R1.2: When any package needs a path under `.aido/`, the system shall obtain it from the config package's exported path constructors rather than by string concatenation at the call site.
 - R1.3: When a caller requests a `.aido/` path, the system shall return the path defined by the on-disk contract in `structure.md` S1 without creating it as a side effect.
 
