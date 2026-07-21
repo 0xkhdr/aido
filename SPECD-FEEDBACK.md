@@ -713,3 +713,74 @@ stated plainly and stays a proposal — never a self-applied change.
   workflow-owned paths, naming the baseline in the error) still stand, since
   re-dispatch is a workaround an agent had to read specd's source to find.
 - **Status:** open (blocker cleared, message/doc gap remains)
+
+### 2026-07-21 — friction — `brain resume` re-mints the mission at current HEAD but reports "no dispatch to re-issue"
+
+- **Context:** spec `aido-config`, execute phase, orchestrated mode. `session.json`
+  held `{"id":"aido-config","revision":1}` — no `step`, no missions — while
+  `acp.jsonl` and `checkpoint.json` both carried a step-1 dispatch of
+  `aido-config.s1.T1`. The session had lost its step.
+- **Expected:** `specd brain run` would dispatch the frontier task.
+- **Actual:**
+  ```
+  $ specd brain start aido-config --authority
+  session revision conflict
+  $ specd brain run aido-config --authority
+  duplicate mission id: aido-config.s1.T1
+  ```
+  Neither message names the divergence or the verb that repairs it. `run`
+  recomputes `step = session.Step + 1 = 1` (`brain_run.go:248`), mints the same
+  deterministic id, and the ledger's duplicate guard refuses it — correctly, but
+  the operator is told only "duplicate", not "your session is behind your ledger".
+- **What actually fixed it:** `specd brain resume aido-config --authority`, which
+  printed `brain resume: reconciled, no dispatch to re-issue for aido-config`
+  and then, despite that wording, wrote a **fresh** pending mission with
+  `subject_head` advanced from `604435d` to the current HEAD `cfd789c`. That
+  re-pin is what unblocked the run — it is the single most consequential effect
+  of the command and the output actively denies it happened.
+- **Root cause:** two defects. (1) `brain start`/`brain run` diagnose a
+  session/ledger divergence with messages that do not name `resume`. (2)
+  `resume`'s success message describes the ACP ledger's state ("nothing to
+  re-issue") while silently changing the scope baseline every claimed mission
+  will be measured against.
+- **Recommendation:** (a) make `duplicate mission id` and `session revision
+  conflict` both carry `WithRecovery(agent, "specd brain resume <slug> --authority")`;
+  (b) have `resume` print what it re-pinned —
+  `brain resume: reconciled aido-config.s1.T1, subject_head 604435d → cfd789c`;
+  (c) state in the orchestration skill that `resume` moves the baseline, since
+  that is now the documented escape from a stale `OUTSIDE_SCOPE`.
+- **Status:** open
+
+### 2026-07-21 — friction — `brain report` cannot complete a task while a driver session is open
+
+- **Context:** spec `aido-config`, T1 claimed as lease
+  `994499e6eeaba8db324df0b6bbba9f33`, work verified, task completed manually.
+  Reporting the mission back to the controller:
+  ```
+  $ specd brain report aido-config 994499e6eeaba8db324df0b6bbba9f33 worker-1
+  BINDING_MISSING: driver session ds-491912193b3fbfdd8c118f2d3c4deff3 is open, so T1 requires --session and --nonce
+  $ specd brain report aido-config 9944… worker-1 --session ds-4919… --nonce 3e15321f…
+  BINDING_MISSING: driver session ds-491912193b3fbfdd8c118f2d3c4deff3 is open, so T1 requires --session and --nonce
+  ```
+  Passing the binding changes nothing — the flags are accepted by the parser and
+  then dropped.
+- **Expected:** `brain report` either forwards the binding it was given, or mints
+  its own under the lease's `driver_session_id` (which it already validates
+  against, `brain_report.go:53`).
+- **Actual:** `brain_report.go:84` calls `runTaskComplete(root, []string{slug,
+  m.TaskID}, nil)` — flags hardcoded `nil`. The completion path then demands the
+  session binding the caller supplied and the callee discarded. The orchestrated
+  path and the driver-session path are mutually exclusive by construction.
+- **Root cause:** harness bug. Every specd orchestration example claims a lease
+  and reports it; every one of those runs is broken the moment a driver session
+  is open, which is the normal state for a host that has run `specd session ack`.
+- **Recommendation:** forward the caller's flags into `runTaskComplete`, or mint
+  the nonce internally from the lease's already-validated
+  `driver_session_id`. The second is better: the lease *is* the authority here,
+  so requiring a second single-use token proves nothing the lease has not.
+- **Workaround used:** completed via `specd complete-task … --session … --nonce …`
+  directly. The task is complete and its evidence is real, but the mission stays
+  `pending` in `session.json` and its lease expires unreported, so the
+  controller's view of the wave is permanently one report short of the truth.
+- **Status:** open — orchestration is only half-usable; every task in this run
+  will need the same workaround.

@@ -25,19 +25,19 @@
     "verify": "CGO_ENABLED=0 go build ./... \u0026\u0026 go vet ./... \u0026\u0026 go test ./...",
     "context_ref": "context:aido-config:T1",
     "context_digest": "47e38cfbbc944c89ec79d75241ad733d355921d1a68ed617a5711f8618ab1a65",
-    "config_digest": "693037930104a95f2b551d044ba762f39fa98a71d82591b4094a32588c5721cd",
+    "config_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
     "palette_digest": "bae489ae737d2843e04cf152892272cd769cc9ef661f71eb67fb2227b6e3fed6",
-    "policy_digest": "693037930104a95f2b551d044ba762f39fa98a71d82591b4094a32588c5721cd",
-    "subject_head": "604435d3226caac8dd45386156e25c284f464bea",
+    "policy_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
+    "subject_head": "cfd789c988579e9b1a46d7b39d8552ffadf189a2",
     "route_class": "standard",
     "route_reason": "policy=1 risk=medium complexity=standard capabilities=read,write",
     "limits": {
       "max_attempts": 4,
       "timeout_seconds": 900
     },
-    "issued_at": "2026-07-21T19:56:59.056786616+03:00",
-    "expires_at": "2026-07-21T20:11:59.056786616+03:00",
+    "issued_at": "2026-07-21T20:09:08.42501423+03:00",
+    "expires_at": "2026-07-21T20:24:08.42501423+03:00",
     "status": "pending"
   },
-  "time": "2026-07-21T19:56:59.056786616+03:00"
+  "time": "2026-07-21T20:09:08.42501423+03:00"
 }
