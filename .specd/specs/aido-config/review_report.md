@@ -9,7 +9,7 @@ run `specd approve <spec> complete` with review.required enabled.
 
 - **Git HEAD:** 5cffbab12c21770a0f7a8f9cccc87e02fa4da958
 - **Reviewer:** pinky-auditor (subagent, unattended run 2026-07-21)
-- **Verdict:** needs-changes — see "Re-audit at ddf549b (2026-07-21)" at the end of this document; that section, not the original findings list, is the current call.
+- **Verdict:** needs-changes — see "Third pass at 6d1fa4b" at the end of this document; that subsection, not the original findings list, is the current call.
 
 > Note: the scaffold recorded HEAD as `5cffbab` (T6). The tree actually audited is
 > `5168581` (T7, `test(config): enforce the tech.md T1 import allowlist`). The
@@ -670,3 +670,342 @@ undesigned exports; record N3 and N4 as an ADR or reduce the import to the
 subpackages that are actually needed; and either widen the R1.2 check to every
 package or drop the claim that R1.2 is checked. F6, F9, F10's residue, and F11
 remain open and are not blockers.
+
+### Third pass at 6d1fa4b
+
+Baseline at `6d1fa4b`: `go build ./...` and `go vet ./...` clean; `CGO_ENABLED=0
+go test ./...` passes **on a machine with no global git ignore rule matching
+`.aido/`** — see NN2, which is not a hypothetical. `internal/config` coverage
+85.0% (down from 90.0% at `ddf549b`), `cmd/aido` 84.8%.
+
+Method: I re-ran the probe matrix, this time differentially — every case runs
+`gitIgnores` and a real `git check-ignore` against the same repository with the
+same `HOME`/`XDG_CONFIG_HOME`, and disagreement is the finding. `!!` marks a
+divergence.
+
+```
+   root .gitignore .aido/                  aido=true  git=ignored
+   info/exclude only                       aido=true  git=ignored
+   info/exclude CRLF                       aido=true  git=ignored
+   subdir .aido/.gitignore                 aido=true  git=ignored
+   XDG ignore, core.excludesFile unset     aido=true  git=ignored
+   core.excludesFile in ~/.gitconfig       aido=true  git=ignored
+   core.excludesFile = ~/mine (tilde)      aido=true  git=ignored
+   tracked via `git add -f` despite ignore  aido=false git=not-ignored
+   not a repository                        aido=false git=n/a
+   dir inside a bare repo                  aido=false git=n/a
+   symlinked project path                  aido=true  git=ignored
+!! core.excludesFile set + XDG ignore too  aido=true  git=not-ignored   NN3
+!! core.excludesFile in ~/.config/git/config aido=false git=ignored     NN4
+!! linked worktree, main info/exclude      aido=false git=ignored       NN5
+!! negation inside an excluded directory   aido=false git=ignored       N6
+!! .aido/ does not exist yet               aido=false git=ignored       NN1
+   stray empty .git directory              aido=true  git=fatal(128)    NN7
+```
+
+Eleven of the seventeen cases now agree with git, including all four that N1/N2
+were about and the one N7 was about. That is real progress, and the narrowing to
+plumbing packages (N3) is exactly right. Six disagree; three of those are new.
+
+**Disclosure.** An earlier probe of mine had an environment-construction bug
+(`append(os.Environ(), "HOME=...")` — glibc `getenv` returns the *first* match,
+so the child git read the real `$HOME`) and consequently wrote
+`~/.gitconfig`, `~/otherignore`, and `~/.config/git/ignore` in the operator's
+home directory. I removed the two junk files and rewrote `~/.gitconfig` with the
+`user.name`/`user.email` recovered from this repository's own commit authorship
+(`Mohamed Khedr <0xkhdr@gmail.com>`). **If that file held anything else — signing
+keys, aliases, credential helpers, includes — it is gone and must be restored
+from backup.** The matrix above was re-run afterwards with a properly isolated
+environment; nothing in it depends on the contaminated state. The accident did
+independently reproduce NN2.
+
+#### Disposition of N1–N9
+
+| # | disposition | note |
+|---|---|---|
+| N1 — `.git/info/exclude` dropped | **resolved** | `secrets.go:253-255` reads it directly with `os.ReadFile`, bypassing the billy `.git` rejection. Verified against `git check-ignore`, including a CRLF file, which I expected to break and does not — `ParsePattern` tolerates the trailing `\r`. |
+| N2 — global/system excludes | **partially resolved** | `LoadSystemPatterns`, `LoadGlobalPatterns`, and the XDG default are now consulted, and `~` expansion in `core.excludesFile` works. Two new divergences remain: NN3 (over-application, **unsafe direction**) and NN4. |
+| N3 — network stack in the closure | **resolved** | Verified: `go list -deps ./internal/config` = 112 packages, and `net`, `net/http`, `crypto/tls` are all absent. Binary 9,125,483 → 4,242,547 bytes. The whole-module closure is 113, so the test-only go-git root import does not leak into production. The *check* protecting this was weakened — NN6. |
+| N4 — Go floor | **resolved** | `tech.md:34-37` and `requirements.md:17` both state 1.25 with the reason and the deliberate digest invalidation recorded inline. This is the right shape for an operator ruling. (Cosmetic: the specd-managed block at `tech.md:16` still reads "e.g. Go 1.22" — that is scaffold placeholder text, not a claim.) F11 remains open: still nothing *fails* if the directive moves again. |
+| N5 — R1.2 check | **substantially resolved** | Now walks the whole module from the repo root, folds literal concatenations via `stringValue`, and guards vacuity with `if scanned == 0 { t.Fatal }` — which answers my objection directly. The residual evasions are documented in-code as a named ceiling rather than hidden, which is the correct way to ship a partial check. One residual matters: NN9. |
+| N6 — negation inside an excluded dir | **still open** | Unchanged and still untested. `.aido/` then `!.aido/.secrets.yaml` → aido `false`, git `ignored`. Safe direction. Now the *only* remaining pre-existing divergence, so it is cheap to close. |
+| N7 — symlinked project path | **resolved, with a regression** | `relativeTo` (`secrets.go:193-209`) resolves both sides; probe and `TestWriteSecretsThroughSymlinkedProjectPath` both confirm. The same function introduced NN1. |
+| N8 — `fsync` seam | **unchanged** | Still an unsynchronised package-level var with no note about `t.Parallel`; `write.go:44`, `:47`, `:53-56`, `:65-67`, `:69-71` still at zero coverage. Minor, as before. |
+| N9 — misleading comments | **partially resolved** | The `found`/`testing.Verbose()` ceremony is gone. `secrets_test.go:233` still says "`--force`, because the path is ignored"; `git.AddOptions` still has no `Force` field. |
+
+#### On the specific questions asked
+
+**Is `TestWriteSecretsHonoursInfoExclude` non-vacuous?** Not reliably. It asserts
+only the positive (`WriteSecrets` returns nil) and does not isolate `HOME`, so on
+any machine whose global excludes already match `.aido/` it passes without
+`.git/info/exclude` being consulted at all. That is not theoretical — it is the
+machine this audit ran on, after my own accident, and it is the configuration a
+user of this tool is most likely to have. It needs `t.Setenv("HOME", t.TempDir())`
+plus a negative control (same repository, no `info/exclude`, expect
+`ErrNotGitIgnored`). See NN2.
+
+**Is `parseExcludeFile` faithful, and is the nil domain right?** The nil domain is
+**correct**. `gitignore.ReadPatterns` passes its `path` slice as the domain, which
+is `nil` for the worktree root, and git anchors `info/exclude` and global-exclude
+patterns at the worktree root exactly as it anchors a root `.gitignore`. Nil is
+the right answer for all three sources.
+
+The parser is faithful enough. Two immaterial deviations from go-git's own
+`readIgnoreFile`, neither worth changing: go-git tests `HasPrefix(s, "#")` on the
+untrimmed line, so `"  # note"` is a *pattern* to go-git and to git but a comment
+to `parseExcludeFile`; and `bufio.Scanner` strips a trailing `\r` where
+`strings.Split` does not — I expected that to break CRLF exclude files and probed
+it, and it does not, because `ParsePattern` trims trailing whitespace itself. One
+genuine gap: git honours a backslash-escaped trailing space (`foo\ `), and neither
+implementation does. Not worth code.
+
+**Does `findRepository` handle anything worse than `PlainOpenWithOptions`?** Two
+things. It does not validate that the `.git` it found is a repository, so a stray
+empty `.git` directory is accepted where go-git refused (NN7). And its `.git`-file
+branch — the linked-worktree and submodule support the commit message advertises —
+resolves the git directory correctly but then looks for `info/exclude` inside it,
+where for a linked worktree that file does not live (NN5). Everything else it
+handles at parity: absolute and relative `gitdir:` targets, `.git` as a symlink,
+per-worktree `index`, walking to the filesystem root, and bare repositories.
+
+**Can the R1.2 check still be evaded in a way that matters?** Yes, once: see NN9.
+
+#### New findings
+
+##### NN1 — MAJOR. `WriteSecrets` now refuses when `.aido/` does not exist yet, with a false security error, contradicting its own comment
+
+`internal/config/secrets.go:199-203`, reported at `secrets.go:97-98`
+
+```
+.aido/ absent -> WriteSecrets err = refusing to write a key to a path that is
+                 not git-ignored: /tmp/.../.aido/.secrets.yaml
+  gitIgnores = false, <nil>
+  relativeTo = "", <nil>
+```
+
+`relativeTo` calls `filepath.EvalSymlinks(filepath.Dir(path))` and, on failure,
+returns `"", nil` — "a missing parent directory cannot be inside anything". But
+`filepath.Dir(path)` *is* `.aido/`, and `WriteSecrets`'s own comment two functions
+up (`secrets.go:91-92`) says "The project directory, not `.aido/` itself: `.aido/`
+need not exist yet". The N7 fix made that comment false.
+
+Three things wrong with the result, in increasing order:
+
+1. It is the **first-run case**. Every project starts without `.aido/`.
+2. The error is `ErrNotGitIgnored` — a security refusal — for a condition that is
+   nothing of the kind. A caller doing `errors.Is(err, ErrNotGitIgnored)` will
+   tell the user their `.gitignore` is wrong when their directory is merely
+   absent. At `ddf549b` this case correctly evaluated the ignore rule and then
+   failed in `WriteFile` with an `fs.ErrNotExist`-wrapping error a caller could
+   classify. That is a regression in error quality, introduced by a fix for an
+   unrelated finding.
+3. `secrets.go:200-203` has **zero test coverage**, which is why it landed.
+
+Fix is small: resolve the nearest existing ancestor, or resolve `worktree` and the
+project directory and join the known-relative remainder. Then assert the case.
+
+##### NN2 — MAJOR. The suite is not hermetic: a global git ignore matching `.aido/` fails a test and hollows out another
+
+`internal/config/secrets_test.go:162` (`gitProject`)
+
+`gitIgnores` now reads `/etc/gitconfig`, `$HOME/.gitconfig`, and
+`$XDG_CONFIG_HOME/git/ignore`. No test isolates any of them. Reproduced
+deliberately:
+
+```
+$ printf '.aido/\n' > $H/.config/git/ignore
+$ HOME=$H XDG_CONFIG_HOME=$H/.config go test ./internal/config
+--- FAIL: TestWriteSecretsRefusesTrackedPath (0.00s)
+    secrets_test.go:207: err = <nil>, want errors.Is(err, ErrNotGitIgnored)
+FAIL
+```
+
+The developer configuration that breaks the build is *`.aido/` in your global git
+ignore* — which is the single most sensible thing a user of this tool would do,
+and is precisely the capability N1/N2 asked for. The suite now punishes its own
+recommended setup.
+
+The mirror image is worse for evidence: on that same machine
+`TestWriteSecretsHonoursInfoExclude` and `TestWriteSecretsWritesWhenIgnored` pass
+because of the *global* rule, whether or not `info/exclude` or the repository
+`.gitignore` is consulted at all. The test written to prove N1 closed cannot
+distinguish N1-closed from N1-open on the machines where it matters most.
+
+One line in `gitProject` — `t.Setenv("HOME", t.TempDir())` and the same for
+`XDG_CONFIG_HOME` — fixes both halves. `/etc/gitconfig` stays uncontrollable
+(go-git does not honour `GIT_CONFIG_NOSYSTEM`); accept that or inject the pattern
+sources.
+
+##### NN3 — MODERATE, and the only divergence in the unsafe direction. XDG excludes are applied *in addition to* `core.excludesFile`, not as its default
+
+`internal/config/secrets.go:245-252`
+
+Git's rule: `$XDG_CONFIG_HOME/git/ignore` is the **default value** of
+`core.excludesFile`. If `core.excludesFile` is set, the XDG file is not read.
+This code appends it unconditionally, on top of whatever `LoadGlobalPatterns`
+returned. Probed:
+
+```
+!! core.excludesFile set (to an irrelevant file) + ~/.config/git/ignore present
+   aido=true   git=not-ignored
+```
+
+Every other divergence in this implementation errs toward refusing to write.
+This one errs toward **writing a key to a path git will happily track** — the
+exact leak R4.6 exists to prevent. Low likelihood, maximal consequence, and it is
+the one case where "fails safe" no longer covers for the gap.
+
+Fix: read the XDG file only when neither `LoadSystemPatterns` nor
+`LoadGlobalPatterns` produced patterns from an explicit `core.excludesFile` —
+which means the code needs to know *whether* the option was set, not just what it
+returned. Reading `~/.gitconfig`'s `core.excludesfile` directly (go-git's
+`plumbing/format/config` is already in the closure) is the honest way to get that.
+
+##### NN4 — MODERATE. `core.excludesFile` declared in `~/.config/git/config` is not read
+
+`internal/config/secrets.go:242`
+
+`gitignore.LoadGlobalPatterns` reads `$HOME/.gitconfig` only. Git also reads the
+XDG config file `$XDG_CONFIG_HOME/git/config`, which is where a lot of modern
+setups put it. Probed: aido `false`, git `ignored`. Safe direction (false
+refusal), but it is the same class of gap N2 was raised for, one level up: the
+sources are now consulted, the *config files that name* the sources are not.
+
+##### NN5 — MODERATE. In a linked worktree, `info/exclude` is read from the wrong directory, and the entire `.git`-file branch is untested
+
+`internal/config/secrets.go:168-181` and `:255`
+
+`findRepository` correctly follows a `.git` file to `<main>/.git/worktrees/<name>`,
+and reading `index` from there is right — that index is per-worktree. But
+`info/exclude` is **not** per-worktree: git reads `$GIT_COMMON_DIR/info/exclude`,
+i.e. the main repository's `.git/info/exclude`. Probed with a real
+`git worktree add`:
+
+```
+findRepository(linked) -> gitDir=<main>/.git/worktrees/linked
+info/exclude at gitDir exists = false
+pattern count = 0
+!! aido=false  git=ignored
+```
+
+The `commondir` file sitting next to `gitdir` in that same directory names the
+path to resolve. Two lines.
+
+Compounding: coverage shows `secrets.go:168-181` — the whole `.git`-file branch,
+i.e. every submodule and every linked worktree — at **zero**. The feature the
+commit message advertises is exercised by nothing.
+
+##### NN6 — MODERATE. The import allowlist now matches by module prefix, which re-opens the hole N3 was about
+
+`internal/config/imports_test.go:18-32`
+
+`allowedModule` accepts anything under `github.com/go-git/go-git/v5/`. That now
+includes `plumbing/transport/http` and `plumbing/transport/ssh`, either of which
+pulls `net/http` and `crypto/tls` straight back into this package's closure — and
+the `forbidden` map would not fire, because it matches the literal import path
+`net/http`, not what an allowed import drags in.
+
+So the check that certifies N3 closed would not notice N3 re-opening. The
+prefix widening was necessary (three subpackages are legitimately used); the
+mistake is relying on an import-path check for a *dependency-closure* property.
+The direct fix is one assertion that costs nothing:
+`go list -deps ./internal/config` must not contain `net/http`. That tests the
+thing I5 actually claims, for every future import, and would have caught the
+original F1 fix too.
+
+##### NN7 — MINOR. A stray `.git` directory is accepted as a repository
+
+`internal/config/secrets.go:166-167`
+
+`findRepository` returns on the first `.git` that stats as a directory, without
+checking for `HEAD` or `objects/`. Probed: a bare `mkdir .git` plus a `.gitignore`
+yields aido `true` where git exits 128 ("not a git repository"). `PlainOpen`
+rejected this. Direction is a false permit, but the consequence is nil — a
+directory that is not a repository cannot commit anything — so this is
+housekeeping, not a leak. One `os.Stat(gitDir/"HEAD")` closes it if you care.
+
+##### NN8 — MINOR. Coverage regression, concentrated in the new hand-rolled code
+
+`internal/config` fell 90.0% → 85.0%. The new code added roughly 110 lines of
+repository discovery, index decoding, and pattern assembly, and the following are
+at zero: `secrets.go:138-140`, `:142-144`, `:149-151`, `:159-161`, `:168-181`
+(NN5), `:195-197`, `:200-203` (NN1), `:205-207`, `:218-220`, `:223-225`, `:231`,
+`:257-259`.
+
+Two of those uncovered blocks are the two functional bugs in this pass. That is
+not a coincidence and it is the same pattern F3 and F4 named: a branch nobody
+executes is a branch nobody checked. Replacing a well-tested library function
+with 110 lines of your own is defensible here — the operator asked for the
+narrowing and the library was genuinely dropping `info/exclude` — but it moves
+the burden of proof onto this repository's tests, and they have not taken it up.
+The differential probe in this section is the shape the test should have: build a
+repository, ask `gitIgnores` and `git check-ignore` the same question, require the
+same answer. Keep it behind a `git`-on-PATH check so T3 is not reintroduced into
+the runtime.
+
+##### NN9 — MINOR. The one R1.2 evasion that matters, plus a prefix nit
+
+`cmd/aido/config_show_test.go:66-92`
+
+`stringValue` folds literal `+` chains, so `"." + "aido"` is caught, and the
+in-code ceiling comment is honest about non-literal operands. The evasion that
+matters is the one an author would reach for *by accident*:
+
+```go
+filepath.Join(dir, config.DirName, "config.yaml")   // caught by nothing
+config.DirName + "/config.yaml"                     // caught by nothing
+```
+
+Neither contains a `.aido` literal, both are hand-built `.aido/` paths, and the
+second is exactly what someone half-remembering R1.2 writes — reach for the
+exported constant, skip the constructor. `config.DirName` is exported precisely
+so this is easy. Adding `DirName` as a second needle — flag any `config.DirName`
+selector outside `internal/config` — costs four lines and closes the realistic
+case. The adversarial cases (`fmt.Sprintf`, byte slices) I agree are not worth
+`go/types`.
+
+Nit: `strings.HasPrefix(rel, filepath.Join("internal","config"))` at
+`config_show_test.go:92` is a string-prefix test, so a future
+`internal/configloader` would inherit the owner exemption silently. Use
+`rel == owner || strings.HasPrefix(rel, owner+string(filepath.Separator))`. Also,
+the exemption covers all of `internal/config` where only `paths.go` needs it.
+
+#### Verdict
+
+**needs-changes.**
+
+The direction is right and the work is substantially better than either prior
+pass. N3 is closed cleanly and verifiably — the network stack is out of the
+production closure, the binary halved, and the narrowing to plumbing packages is
+the correct reading of both T1 and T2. N1 is closed and I confirmed it against
+real git. N4 is handled the way a steering change should be: an operator ruling,
+recorded in both artifacts, with the digest invalidation stated rather than
+hidden. N5's ceiling is documented in the code instead of being papered over.
+This is the first pass where I would say the author is auditing their own work
+honestly.
+
+It still does not ship:
+
+1. **NN1** — the first-run case, `.aido/` not yet created, now returns a security
+   refusal for a missing directory. Introduced by this commit, uncovered by any
+   test, and it contradicts a comment fifteen lines away in the same file.
+2. **NN2** — the suite is non-hermetic against the very configuration the last two
+   passes were about supporting, and the test that certifies N1 is vacuous on the
+   machines where N1 mattered. I will not certify R4.6 on evidence that a
+   `~/.config/git/ignore` line can produce.
+3. **NN3** — the first divergence in this whole audit that fails *permissive* on a
+   guard whose entire purpose is refusing to leak a key.
+4. **NN5/NN8** — 110 lines of hand-rolled git internals replaced a well-tested
+   library call, and the two blocks that turned out to be wrong are both blocks no
+   test executes.
+
+Minimum to clear, in order: NN1, NN2, NN3. Then NN5 (`commondir`, two lines) and
+NN6 (one `go list -deps` assertion, which is worth more than the rest of the
+import test put together). N6, NN4, NN7, NN9, F6, F7, F8, F9, F10-residue, F11
+and F12 remain open and are not blockers — but F7 and F8 have now survived three
+passes, and `design.md` still specifies nothing for the requirement this entire
+re-audit has been about.
+
+Standing note, unchanged from the second pass: `6d1fa4b`, `ddf549b`, and
+`aa3dd69` are all out of band, no task marker claims them, and the `**Git HEAD:**`
+field above still reads `5cffbab`.
