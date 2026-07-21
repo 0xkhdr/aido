@@ -854,3 +854,37 @@ stated plainly and stays a proposal — never a self-applied change.
   `brain run: wait (T4 held by unclaimed mission aido-config.s3.T4, expires
   20:26:17)` — the controller has both facts in hand at that moment.
 - **Status:** open
+
+### 2026-07-21 — friction — the design gate counts requirement *mentions*, not requirement *coverage* (auto-approval finding)
+
+- **Context:** spec `aido-config`, design phase, approved under delegated
+  authority on a clean `specd check` (exit 0, no output) plus a passing
+  `specd approve`. Found later, during execute, while planning T5.
+- **What the gate accepted:** `design.md` lists `R4.6` in its `references:` line
+  and names it once in invariant I1. R4.6 says: *"When a code path would write a
+  resolved key to disk, the system shall refuse unless the target is
+  `.aido/.secrets.yaml` and that path is confirmed git-ignored first."* Nothing
+  in Interfaces, Failure, Alternatives, or Verification covers it — there is no
+  function that performs the refusal, no failure mode for "target is not
+  git-ignored", and no test planned against it. I1 as written ("a resolved key
+  never leaves ResolveKey's return value") is a *different, weaker* property
+  than R4.6, and citing R4.6 beside it reads as coverage without being coverage.
+- **Why this matters more than the usual gate gripe:** this is the exact class
+  the unattended run was told to hunt — an artifact a human reviewer would have
+  bounced, that every automated gate passed. The design gate checks that the six
+  contract fields exist and that requirement ids are referenced. Both held. A
+  requirement can therefore be satisfied, at gate level, by being mentioned.
+  R4.6 is a *security* requirement, which makes it the worst one to lose this
+  way.
+- **Root cause:** harness gap. There is no design-to-requirement coverage gate,
+  only a reference gate.
+- **Recommendation:** (a) require each requirement id in `references:` to also
+  appear in at least one of Interfaces / Failure / Verification, and name the
+  ones that appear nowhere — the parse already exists, this is a set difference;
+  (b) report the coverage table in `specd check` output rather than silence, so
+  the human approving sees `R4.6: referenced, never specified` before deciding.
+- **Handling in this run:** the design was **not** retro-edited (it is an
+  approved artifact and this is not a `midreq`). R4.6 will be implemented in T5
+  under its own acceptance id, and this gap is being carried to T8's audit as a
+  finding rather than quietly closed.
+- **Status:** open
