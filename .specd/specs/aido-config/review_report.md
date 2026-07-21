@@ -7,13 +7,13 @@ anti-pattern (see docs/validation-gates.md). Edit the three fields below, then
 run `specd approve <spec> complete` with review.required enabled.
 -->
 
-- **Git HEAD:** 5cffbab12c21770a0f7a8f9cccc87e02fa4da958
+- **Git HEAD:** b3b3c78940c80d1e5ae8695f6c98af4562a62038
 - **Reviewer:** pinky-auditor (subagent, unattended run 2026-07-21)
 - **Verdict:** approve
 
-> Note: the scaffold recorded HEAD as `5cffbab` (T6). The tree actually audited is
-> `5168581` (T7, `test(config): enforce the tech.md T1 import allowlist`). The
-> scaffold's HEAD field is stale by one code commit — see F12.
+> The HEAD field above was set by the reviewer to the commit actually verified,
+> replacing the `5cffbab` the scaffold stamped at T6. See the seventh pass at the
+> end of this document.
 
 ## Tasks under review
 
@@ -1615,3 +1615,68 @@ The code that resulted is good. I have been unsparing for six passes and the wor
 improved under every one of them, including when the right answer was to delete a
 feature rather than fix it. Verdict `approve`, and record R4.6 `pass` citing the
 fifth-pass subsection.
+
+### Seventh pass at b3b3c78
+
+Provenance correction and a check of the one commit made after the sixth-pass
+sign-off. No code was re-audited beyond confirming none changed.
+
+**Scope of `b3b3c78`.** `git diff f08e624..b3b3c78 --name-only` returns
+`.specd/specs/aido-config/design.md` and
+`.specd/specs/aido-config/review_report.md`. No file outside `.specd/` is
+touched, so no code, test, `go.mod`, or steering file moved. `go vet ./...` and
+`CGO_ENABLED=0 go test ./...` still pass.
+
+One correction to the description I was given: the commit is *not* `design.md`
+alone. It also carries 190 lines of `review_report.md` — my own sixth-pass
+section, committed along with it. That is my content and it changes nothing about
+the substance, but "design.md alone" is not what landed, and a provenance pass is
+the wrong place to let an inaccurate scope claim stand.
+
+**Accuracy of the F13 amendment.** Every factual claim in the new dependency
+field checks out against the code:
+
+| claim | check | result |
+|---|---|---|
+| depends on stdlib, `gopkg.in/yaml.v3`, and `github.com/go-git/go-git` | `tech.md` T1 lists go-git by name | accurate |
+| go-git used for R4.6's git-ignore check only, and only `plumbing/format/{gitignore,index}` plus `go-billy/osfs` | `go list -f {{.Imports}} ./...` on the non-test surface returns exactly `go-billy/v5/osfs`, `go-git/v5/plumbing/format/gitignore`, `go-git/v5/plumbing/format/index`, `gopkg.in/yaml.v3` | **exact** — the field lists the production import set precisely, no more and no less. The root package, `plumbing`, `filemode`, and `object` appear only in `TestImports` |
+| the root package pulls `net/http` and `crypto/tls` into a graph I5 forbids | measured across passes three and four: 337 → 112 packages, `net`/`net/http`/`crypto/tls` absent, binary 9.1M → 4.2M | accurate |
+| two build-time checks hold that line | `TestPackageImportsStayInAllowlist` + `forbiddenSubtrees` (`imports_test.go:114, 30`) and `TestConfigPackageHasNoNetworkDependency` (`cmd/aido/config_show_test.go:189`) | both exist and both fire, probed in pass four |
+| go-git declares `go 1.25.0`, which is why the module floor moved | go-git v5.19.1 `go.mod` and this module's `go.mod` both read `go 1.25.0` | accurate |
+
+The amendment also does the thing that mattered most and that I did not ask for
+explicitly: it says *when* the old sentence stopped being true (`aa3dd69`) and
+*why* the change was made (`tech.md` T3), so the field now records the history
+rather than only the current state. **F13 is resolved.**
+
+Two nits, neither worth a fix on its own:
+
+- The header `integration:` field lists "stdlib, `gopkg.in/yaml.v3`, and
+  `github.com/go-git/go-git` (all on the `tech.md` T1 allowlist)" and omits
+  `go-billy`, which is a distinct module and is not named in T1. The Integration
+  bullet does name it, and `imports_test.go:21` justifies it as riding on go-git's
+  T1 entry because it arrives only through go-git — which is the right call. The
+  summary field is one module short of the body it summarises.
+- The italic amendment parenthetical is spliced mid-bullet, so
+  `` `CGO_ENABLED=0` holds; nothing imports cgo `` now trails after it as an
+  afterthought rather than sitting with the dependency statement. Cosmetic.
+
+**Git HEAD field.** Set to `b3b3c78940c80d1e5ae8695f6c98af4562a62038`, the commit
+this document describes, replacing the `5cffbab` the scaffold stamped at T6. The
+note about the field being stale is removed because it no longer is.
+
+I agree with the reversal. My fourth-pass reasoning — that correcting the field by
+hand would falsify provenance — was backwards. The field asserts *which tree the
+reviewer verified*, and only the reviewer knows that; leaving it at the scaffold's
+value made the document claim to describe a tree twelve commits old, which is a
+larger falsehood than the one I was trying to avoid. What would falsify provenance
+is setting it to a commit I had not actually checked. That is not the case here:
+passes one through six verified `5168581` through `f08e624` by execution, and this
+pass confirms `b3b3c78` changes no code and that its documentation claims are
+true.
+
+**Verdict unchanged: `approve`.** Nothing in `b3b3c78` touches behaviour, its
+documentation claims are accurate, and the finding it closes was one I had already
+declined to hold the verdict for. The residue list from the sixth pass stands as
+recorded: F9 and F14 are the two worth doing next, F10-residue, F11, N6, and NN7
+are minor, and F12 remains the permanent process note.
