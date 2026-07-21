@@ -1,16 +1,16 @@
 {
   "id": "aido-config",
-  "revision": 3,
-  "step": 1,
+  "revision": 6,
+  "step": 3,
   "leases": [
     {
-      "lease_id": "994499e6eeaba8db324df0b6bbba9f33",
-      "mission_id": "aido-config.s1.T1",
-      "task_id": "T1",
+      "lease_id": "4e39963214e76de9605ec0939d6685de",
+      "mission_id": "aido-config.s2.T2",
+      "task_id": "T2",
       "attempt": 1,
       "worker_id": "worker-1",
-      "issued_at": "2026-07-21T20:10:04.638103744+03:00",
-      "expires_at": "2026-07-21T20:24:08.42501423+03:00",
+      "issued_at": "2026-07-21T20:12:00.887195453+03:00",
+      "expires_at": "2026-07-21T20:26:17.864063207+03:00",
       "policy_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
       "state": "active",
       "authority": {
@@ -18,7 +18,7 @@
         "actor_id": "controller",
         "worker_id": "worker-1",
         "spec_id": "aido-config",
-        "task_id": "T1",
+        "task_id": "T2",
         "phase": "execute",
         "role": "craftsman",
         "mode": "write",
@@ -45,25 +45,58 @@
           "submit"
         ],
         "declared_read_paths": [
-          "go.mod",
-          "internal/config/paths.go",
-          "internal/config/paths_test.go"
+          "internal/config/config.go",
+          "internal/config/config_test.go"
         ],
         "declared_write_paths": [
-          "go.mod",
-          "internal/config/paths.go",
-          "internal/config/paths_test.go"
+          "internal/config/config.go",
+          "internal/config/config_test.go"
         ],
         "network_policy": "deny",
         "sandbox_profile": "required",
-        "baseline_revision": "cfd789c988579e9b1a46d7b39d8552ffadf189a2",
-        "issued_at": "2026-07-21T20:10:04.638103744+03:00",
-        "expires_at": "2026-07-21T20:24:08.42501423+03:00",
+        "baseline_revision": "66de2e378e2921da5b4015b697bca255eacc15f0",
+        "issued_at": "2026-07-21T20:12:00.887195453+03:00",
+        "expires_at": "2026-07-21T20:26:17.864063207+03:00",
         "policy_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
-        "digest": "0458fbdfb0209d6f5680c12a9b9f0370e8a710afdf05cf9039e64a1bbbb749ff"
+        "digest": "3c891c048ef231373213e8111a8e3781d2c3c3f7a053ad428f08b19bcdd8c022"
       },
       "retries": 0,
       "driver_session_id": "ds-491912193b3fbfdd8c118f2d3c4deff3"
+    }
+  ],
+  "pending_missions": [
+    {
+      "protocol_version": "1",
+      "session_id": "aido-config",
+      "mission_id": "aido-config.s3.T4",
+      "spec_slug": "aido-config",
+      "task_id": "T4",
+      "attempt": 1,
+      "role": "craftsman",
+      "authority_ref": "approval:tasks",
+      "declared_files": [
+        "internal/config/write.go",
+        "internal/config/write_test.go"
+      ],
+      "acceptance": [
+        "R5.1, R5.2, R5.3, R5.4"
+      ],
+      "verify": "CGO_ENABLED=0 go build ./... \u0026\u0026 go vet ./... \u0026\u0026 go test ./...",
+      "context_ref": "context:aido-config:T4",
+      "context_digest": "462934512ea7ad407a87a5346be2eb2b4082c61260da5aa136a65733dded15ae",
+      "config_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
+      "palette_digest": "bae489ae737d2843e04cf152892272cd769cc9ef661f71eb67fb2227b6e3fed6",
+      "policy_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
+      "subject_head": "66de2e378e2921da5b4015b697bca255eacc15f0",
+      "route_class": "deep",
+      "route_reason": "policy=1 risk=high complexity=standard capabilities=context,eval,read,review,sandbox,write",
+      "limits": {
+        "max_attempts": 4,
+        "timeout_seconds": 900
+      },
+      "issued_at": "2026-07-21T20:11:17.870671411+03:00",
+      "expires_at": "2026-07-21T20:26:17.870671411+03:00",
+      "status": "pending"
     }
   ],
   "missions": [
@@ -99,6 +132,39 @@
       },
       "issued_at": "2026-07-21T20:09:08.42501423+03:00",
       "expires_at": "2026-07-21T20:24:08.42501423+03:00",
+      "status": "pending"
+    },
+    {
+      "protocol_version": "1",
+      "session_id": "aido-config",
+      "mission_id": "aido-config.s2.T2",
+      "spec_slug": "aido-config",
+      "task_id": "T2",
+      "attempt": 1,
+      "role": "craftsman",
+      "authority_ref": "approval:tasks",
+      "declared_files": [
+        "internal/config/config.go",
+        "internal/config/config_test.go"
+      ],
+      "acceptance": [
+        "R2.1, R2.2, R2.3, R2.4"
+      ],
+      "verify": "CGO_ENABLED=0 go build ./... \u0026\u0026 go vet ./... \u0026\u0026 go test ./...",
+      "context_ref": "context:aido-config:T2",
+      "context_digest": "03f115bbf405b6e900a7ccb1f11baed197576cd981b839f2b610b59e4c7dc327",
+      "config_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
+      "palette_digest": "bae489ae737d2843e04cf152892272cd769cc9ef661f71eb67fb2227b6e3fed6",
+      "policy_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
+      "subject_head": "66de2e378e2921da5b4015b697bca255eacc15f0",
+      "route_class": "standard",
+      "route_reason": "policy=1 risk=medium complexity=standard capabilities=read,write",
+      "limits": {
+        "max_attempts": 4,
+        "timeout_seconds": 900
+      },
+      "issued_at": "2026-07-21T20:11:17.864063207+03:00",
+      "expires_at": "2026-07-21T20:26:17.864063207+03:00",
       "status": "pending"
     }
   ]

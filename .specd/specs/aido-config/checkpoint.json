@@ -1,43 +1,42 @@
 {
   "session_id": "aido-config",
-  "step": 1,
+  "step": 3,
   "wave": 0,
   "decision": "dispatch",
-  "mission_id": "aido-config.s1.T1",
-  "task_id": "T1",
+  "mission_id": "aido-config.s3.T4",
+  "task_id": "T4",
   "mission": {
     "protocol_version": "1",
     "session_id": "aido-config",
-    "mission_id": "aido-config.s1.T1",
+    "mission_id": "aido-config.s3.T4",
     "spec_slug": "aido-config",
-    "task_id": "T1",
+    "task_id": "T4",
     "attempt": 1,
     "role": "craftsman",
     "authority_ref": "approval:tasks",
     "declared_files": [
-      "go.mod",
-      "internal/config/paths.go",
-      "internal/config/paths_test.go"
+      "internal/config/write.go",
+      "internal/config/write_test.go"
     ],
     "acceptance": [
-      "R1.1, R1.2, R1.3"
+      "R5.1, R5.2, R5.3, R5.4"
     ],
     "verify": "CGO_ENABLED=0 go build ./... \u0026\u0026 go vet ./... \u0026\u0026 go test ./...",
-    "context_ref": "context:aido-config:T1",
-    "context_digest": "47e38cfbbc944c89ec79d75241ad733d355921d1a68ed617a5711f8618ab1a65",
+    "context_ref": "context:aido-config:T4",
+    "context_digest": "462934512ea7ad407a87a5346be2eb2b4082c61260da5aa136a65733dded15ae",
     "config_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
     "palette_digest": "bae489ae737d2843e04cf152892272cd769cc9ef661f71eb67fb2227b6e3fed6",
     "policy_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
-    "subject_head": "cfd789c988579e9b1a46d7b39d8552ffadf189a2",
-    "route_class": "standard",
-    "route_reason": "policy=1 risk=medium complexity=standard capabilities=read,write",
+    "subject_head": "66de2e378e2921da5b4015b697bca255eacc15f0",
+    "route_class": "deep",
+    "route_reason": "policy=1 risk=high complexity=standard capabilities=context,eval,read,review,sandbox,write",
     "limits": {
       "max_attempts": 4,
       "timeout_seconds": 900
     },
-    "issued_at": "2026-07-21T20:09:08.42501423+03:00",
-    "expires_at": "2026-07-21T20:24:08.42501423+03:00",
+    "issued_at": "2026-07-21T20:11:17.870671411+03:00",
+    "expires_at": "2026-07-21T20:26:17.870671411+03:00",
     "status": "pending"
   },
-  "time": "2026-07-21T20:09:08.42501423+03:00"
+  "time": "2026-07-21T20:11:17.870671411+03:00"
 }
