@@ -784,3 +784,43 @@ stated plainly and stays a proposal — never a self-applied change.
   controller's view of the wave is permanently one report short of the truth.
 - **Status:** open — orchestration is only half-usable; every task in this run
   will need the same workaround.
+
+### 2026-07-21 — friction — parallel dispatch cannot complete in a single worktree
+
+- **Context:** spec `aido-config`, execute phase. `specd brain run aido-config
+  --authority` dispatched two craftsman missions in one wave:
+  ```
+  brain run: dispatch T2 (frontier ready)
+  brain run: dispatch T4 (frontier ready)
+  ```
+  Both were pinned to the same `subject_head` (`66de2e3`). Declared files are
+  disjoint (`config.go`/`config_test.go` vs `write.go`/`write_test.go`), which is
+  exactly what the frontier scheduler is choosing for.
+- **Expected:** two disjoint missions dispatched together can be worked and
+  completed together.
+- **Actual:** they cannot, in one worktree. `enforceDiffScope` measures the whole
+  diff from `mission.SubjectHead` to HEAD-plus-worktree against *one* task's
+  declared paths (`gates/diffscope.go:120`). The moment T2's files exist —
+  committed or merely written — T4's completion sees them as undeclared, and vice
+  versa. Whichever task completes second is refused. There is no ordering that
+  avoids it: the two missions share a baseline and the scope check has no notion
+  of "changed by a sibling mission in the same wave".
+- **Note:** `CheckDiffScope` already receives `OtherLeaseScopes` and uses it —
+  but only to refuse *overlapping* paths (R4.4). The disjoint case, which is the
+  one the scheduler creates on purpose, is not exempted. The data needed to fix
+  this is already in the function's input.
+- **Root cause:** harness gap. Parallel dispatch presumes worker isolation (a
+  git worktree or checkout per lease) that specd does not create, document, or
+  check for.
+- **Recommendation:** (a) treat paths declared by another *active* mission on the
+  same `subject_head` as out-of-scope-but-not-a-violation, the mirror of the
+  existing overlap rule — a one-line change to the loop that already has
+  `OtherLeaseScopes`; or (b) if isolation is the intended model, have
+  `brain run` refuse to dispatch a second concurrent mission unless the host
+  declares per-lease worktrees, and say so in the message. Silently dispatching a
+  wave that cannot be completed as dispatched is the worst of the three.
+- **Workaround used:** worked T2 alone, completed it, committed it. T4's mission
+  is now unusable — its baseline predates T2's commit — so it must expire and be
+  re-dispatched at a fresh HEAD. Every wave in this run costs one wasted mission
+  and one lease-expiry wait.
+- **Status:** open
