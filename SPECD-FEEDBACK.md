@@ -674,3 +674,42 @@ stated plainly and stays a proposal — never a self-applied change.
   rewritten to hide the commit from the diff. The empty probe commit was reset.
 - **Status:** open — **run-blocking.** T1 has passing evidence at HEAD and
   cannot be completed.
+
+### 2026-07-21 — friction — OUTSIDE_SCOPE recovery text does not name the verb that actually clears it
+
+- **Context:** spec `aido-config`, execute phase, task T1, `profile: default`.
+  Prior entry recorded T1 as unresolvably blocked by
+  `OUTSIDE_SCOPE: … SPECD-FEEDBACK.md is not declared by task T1`. It is not
+  unresolvable — the recovery is just not discoverable from specd's own output.
+- **Expected:** the refusal's recovery line names the action that clears it.
+- **Actual:** the refusal prints
+  `declare the path in the task's files cell or narrow the change`, with
+  `WithRecovery(agent, "specd status aido-config --guide")`. Both are dead ends
+  here: declaring the path means editing an approved `tasks.md`, narrowing is
+  impossible (the file is already committed), and `--guide` prints the whole
+  legal-command list without mentioning the baseline at all. The previous run
+  concluded the task could not be completed and stopped.
+- **Root cause:** missing guidance, not a harness bug. Reading specd's source
+  (`internal/cmd/lifecycle.go:enforceDiffScope` / `missionBaseline`) shows the
+  baseline is `mission.SubjectHead` from `session.json`, falling back to the
+  driver session's `baseline_head`. A **fresh brain dispatch mints a new
+  mission at current HEAD**, which moves the baseline forward and empties the
+  diff. The sibling refusal `BASELINE_UNPINNED` already says exactly this
+  ("dispatch a fresh mission or open a driver session"); `OUTSIDE_SCOPE` does
+  not, and it is the one an agent actually hits.
+- **The general rule this implies, which no doc states:** commit workflow-owned
+  files (this log, `project.yml`) **before** dispatching the mission that will
+  consume them, never during. Anything committed after `subject_head` is
+  permanently outside every scope for that mission.
+- **Recommendation:** (a) add the baseline and its origin to the message —
+  `OUTSIDE_SCOPE: … (baseline 604435d, pinned by mission aido-config.s1.T1)`;
+  (b) extend the recovery to `specd brain run <slug> --authority` (re-dispatch)
+  alongside the declare/narrow advice, matching `BASELINE_UNPINNED`;
+  (c) document the commit-before-dispatch ordering in the execute skill — it is
+  the single non-obvious rule that makes mandatory workflow logging compatible
+  with scope enforcement.
+- **Supersedes:** the two preceding entries' "run-blocking" status, on the
+  blocker only — their recommendations (a scope exemption list for
+  workflow-owned paths, naming the baseline in the error) still stand, since
+  re-dispatch is a workaround an agent had to read specd's source to find.
+- **Status:** open (blocker cleared, message/doc gap remains)
