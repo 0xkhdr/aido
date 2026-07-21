@@ -824,3 +824,33 @@ stated plainly and stays a proposal — never a self-applied change.
   re-dispatched at a fresh HEAD. Every wave in this run costs one wasted mission
   and one lease-expiry wait.
 - **Status:** open
+
+### 2026-07-21 — friction — a stale unclaimed mission blocks its task until the lease TTL expires
+
+- **Context:** spec `aido-config`, execute phase. T4's mission
+  `aido-config.s3.T4` was dispatched in a wave that could not be completed as
+  dispatched (see the parallel-dispatch entry above). It was never claimed. Its
+  `subject_head` is now three commits behind HEAD, so it is unusable.
+- **Expected:** a verb to discard one unusable mission and let the controller
+  re-dispatch that task at a fresh baseline.
+- **Actual:** there is none. `specd brain cancel` is session-terminal (spec 07
+  R2) and would end the run, not free one mission. `brain run` reports
+  ```
+  brain run: wait  (waiting: frontier empty (no task has all dependencies resolved))
+  ```
+  which is also **wrong on its face** — T4's dependency T1 is complete, so the
+  frontier is not empty; T4 is withheld because it already has a pending
+  mission. The message names the wrong reason, which cost a round of checking
+  the dependency graph for a fault that was not there.
+- **Only remedy:** wall-clock. Wait out `expires_at` (15 min at
+  `routing.deadline_seconds` default), then `brain run` mints a fresh mission.
+  This run idled ~12 minutes on it.
+- **Root cause:** harness gap — no per-mission release, plus a wait reason
+  derived from the dependency check rather than from why the task was actually
+  withheld.
+- **Recommendation:** (a) add `specd brain release <slug> <mission-id>
+  --authority` to mark one unclaimed mission abandoned so the task returns to
+  the frontier immediately; (b) make the wait line report the true cause —
+  `brain run: wait (T4 held by unclaimed mission aido-config.s3.T4, expires
+  20:26:17)` — the controller has both facts in hand at that moment.
+- **Status:** open

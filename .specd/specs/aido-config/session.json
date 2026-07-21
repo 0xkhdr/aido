@@ -1,69 +1,7 @@
 {
   "id": "aido-config",
-  "revision": 8,
+  "revision": 9,
   "step": 4,
-  "leases": [
-    {
-      "lease_id": "7347387b692e4fde6bc355d1febf63d4",
-      "mission_id": "aido-config.s4.T3",
-      "task_id": "T3",
-      "attempt": 1,
-      "worker_id": "worker-1",
-      "issued_at": "2026-07-21T20:13:35.662426964+03:00",
-      "expires_at": "2026-07-21T20:28:28.736989932+03:00",
-      "policy_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
-      "state": "active",
-      "authority": {
-        "schema_version": "1",
-        "actor_id": "controller",
-        "worker_id": "worker-1",
-        "spec_id": "aido-config",
-        "task_id": "T3",
-        "phase": "execute",
-        "role": "craftsman",
-        "mode": "write",
-        "allowed_tools": [
-          {
-            "id": "check"
-          },
-          {
-            "id": "complete-task"
-          },
-          {
-            "id": "context"
-          },
-          {
-            "id": "status"
-          },
-          {
-            "id": "verify"
-          }
-        ],
-        "denied_tools": [
-          "approve",
-          "decision",
-          "submit"
-        ],
-        "declared_read_paths": [
-          "internal/config/validate.go",
-          "internal/config/validate_test.go"
-        ],
-        "declared_write_paths": [
-          "internal/config/validate.go",
-          "internal/config/validate_test.go"
-        ],
-        "network_policy": "deny",
-        "sandbox_profile": "required",
-        "baseline_revision": "ccf5db8039bc9559ae18bb05e7a5817b50975c2f",
-        "issued_at": "2026-07-21T20:13:35.662426964+03:00",
-        "expires_at": "2026-07-21T20:28:28.736989932+03:00",
-        "policy_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
-        "digest": "849f3fbc17ad0fdcc8edcddf6bbe0bd802b899b8c31ac19031ce08b25b2ea4a2"
-      },
-      "retries": 0,
-      "driver_session_id": "ds-491912193b3fbfdd8c118f2d3c4deff3"
-    }
-  ],
   "pending_missions": [
     {
       "protocol_version": "1",
