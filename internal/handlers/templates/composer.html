@@ -1,9 +1,0 @@
-<div class="composer-wrap">
-  <form class="composer" hx-post="/projects/{{ .Active.ID }}/tasks"
-        hx-target="#task-list" hx-swap="outerHTML"
-        hx-on::after-request="if(event.detail.successful) this.reset()">
-    <input type="text" name="title" placeholder="Add a task to {{ .Active.Name }}…"
-           aria-label="New task" autocomplete="off" autofocus required>
-    <button type="submit">Send</button>
-  </form>
-</div>
