@@ -142,3 +142,33 @@ _Entries appended below as the run proceeds._
   that it was fixed plus a clean gate, not on an understanding of why it now
   passes — and an approval I cannot explain is exactly the kind this file exists
   to flag.
+
+### aido-config · execute — DEADLOCKED, no task completed
+
+- **Approvals used here:** `specd mode aido-config orchestrated` →
+  `approved aido-config → orchestrated mode` (delegated, exit 0, taken on a
+  clean `specd check` and no blockers in `specd status --guide --json`).
+- **What then happened:** `specd brain run --authority` halted immediately
+  (`required telemetry unknown`, exit 0, step still 0, no mission minted).
+  `specd drive` routed to the granular path; that path ran cleanly through
+  `session open` → `context` → `ack` ("mutable authority active") →
+  `session action` (nonce minted) and then `specd verify aido-config T1` was
+  refused: `AUTHORITY_DENIED: production task command requires AuthorityV1
+  packet`. No flag on `verify` or `complete-task` accepts such a packet; only
+  `brain` mints one. Both routes are closed.
+- **State of the work:** T1 is written and committed on branch
+  `spec/aido-config` (`5432579`) and passes its declared verify command when run
+  by hand. It carries **no specd evidence record** and is **not complete**. That
+  is the correct outcome: the run's one non-negotiable rule was that every task
+  closes on a real `specd verify` at current HEAD, and `specd verify` will not
+  run. Nothing was hand-written, backdated, or reused.
+- **Not done, deliberately:** `project.yml` was not edited.
+  `routing.allow_unknown_telemetry: true` or `profile: default` would unblock
+  both failures in one line, and both are operator-owned policy that was not
+  delegated. `--force` was not used anywhere in this run.
+- **Would have asked you:** may I flip `routing.allow_unknown_telemetry` to
+  `true` in `project.yml`? That is my read of the actual blocker — production
+  profile arms an authority packet that only brain issues, and brain will not
+  dispatch without telemetry this host does not report. It is a one-line policy
+  downgrade, it is yours to make, and it is the difference between this run
+  finishing and stopping at task one of three specs.

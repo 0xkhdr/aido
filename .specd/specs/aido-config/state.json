@@ -4,7 +4,7 @@
   "mode": "orchestrated",
   "status": "executing",
   "phase": "execute",
-  "revision": 4,
+  "revision": 5,
   "records": {
     "approval:design": {
       "kind": "approval",
@@ -40,6 +40,13 @@
       "approved_revision": 2,
       "timestamp": "2026-07-21T16:44:24Z",
       "git_head": "5628a7786ded0a9e9178b7d990c5762fc17d0861",
+      "actor": "xkhdr"
+    },
+    "decision-request:0": {
+      "kind": "decision-request",
+      "text": "T1 declares go.mod but no task declares go.sum. Go refuses to build a module with a require it cannot verify, so go.sum is mandatory the moment T2 imports gopkg.in/yaml.v3. It is not optional and no task owns it. Proceeding by generating go.sum in T1 alongside go.mod, on the reading that a module declaration is go.mod+go.sum as one unit. Needs a human ruling: (a) confirm that reading, (b) amend T1 files to include go.sum via midreq, or (c) vendor instead.",
+      "timestamp": "2026-07-21T16:47:11Z",
+      "git_head": "2cd0b5374b1cdb329c826e644f6df99fa064c64a",
       "actor": "xkhdr"
     }
   }

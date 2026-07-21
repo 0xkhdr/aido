@@ -427,3 +427,93 @@ stated plainly and stays a proposal — never a self-applied change.
   `verify` → `complete-task`), which `specd drive` offers as the legal next
   action and which carries the same evidence gates.
 - **Status:** open
+
+### 2026-07-21 — friction — execute phase deadlocks: `drive` routes to a path `verify` refuses
+
+- **Context:** spec `aido-config`, execute phase, `mode: orchestrated`,
+  `profile: production`, task T1 (role craftsman). Full sequence, all exit 0
+  except where noted:
+  ```
+  $ specd brain run aido-config --authority    → brain run: halt  (required telemetry unknown)
+  $ specd drive aido-config                    → next specd session open aido-config --driver <host>
+  $ specd session open aido-config --driver claude-code
+                                               → opened driver session ds-dba203a3… (baseline revision 4)
+  $ specd context aido-config T1 --json        → manifest, 6 required lanes
+  $ specd session ack aido-config T1 --tokens 12000
+                                               → complete; mutable authority active
+  $ specd session action aido-config T1 --json → nonce 89f321821ad7…, authority_digest 05d90a1c…
+  $ specd verify aido-config T1 --session ds-dba203a3… --nonce 89f321821ad7…
+                                               → AUTHORITY_DENIED: production task command requires AuthorityV1 packet
+  ```
+- **Expected:** `specd drive` is documented as "the single next-action envelope
+  … and the exact next command", and it named `specd session open` as that
+  command while brain was already halted. Following drive's own guidance to its
+  end should reach a legal verify. `specd session ack` explicitly confirmed
+  `complete; mutable authority active`, which reads as the authority
+  precondition being met.
+- **Actual:** `verify` refuses for want of an `AuthorityV1` packet. Neither
+  `specd help verify` nor `specd help complete-task` exposes any flag that
+  carries one — they accept `--session` and `--nonce` only. `specd context
+  --json` contains no authority packet field. The only `--authority` flag in the
+  binary belongs to `specd brain`, and `specd brain claim` takes a mission id
+  that only brain dispatch mints. Dispatch is the thing that halted.
+- **The deadlock:** under `profile: production` with orchestration armed, task
+  verify requires a packet that only brain can issue; brain will not issue one
+  until telemetry is resolvable; telemetry is only ever reported *by* a worker
+  on a verify that cannot run. `drive` meanwhile routes the agent down the
+  granular path as if it were viable, and `session ack` reports mutable
+  authority active when the authority that actually gates `verify` is a
+  different thing with the same name.
+- **Root cause:** harness gap plus misleading guidance. Three separate surfaces
+  (`drive`, `session ack`, `status --guide` legal commands, which lists `verify`)
+  all indicate the granular path is open. It is not, in this configuration.
+- **Recommendation:** (a) make `drive` authority-aware — if the current mode and
+  profile require a brain-issued packet, `drive` must say
+  `next specd brain run <spec> --authority (granular path unavailable: production tasks require an AuthorityV1 packet from brain dispatch)`
+  rather than naming `session open`; (b) have `session ack` distinguish the
+  session's mutable authority from the task-operation AuthorityV1 packet, or
+  stop reporting "mutable authority active" when the next mutable operation will
+  be denied; (c) make `AUTHORITY_DENIED` name the issuer —
+  `AUTHORITY_DENIED: production task command requires an AuthorityV1 packet; obtain one with specd brain claim <mission-id> (specd brain status lists missions)`.
+  Right now the error names a noun that appears in no help text, no JSON
+  payload, and no flag.
+- **Not done:** `project.yml` was not edited. Flipping
+  `routing.allow_unknown_telemetry` to `true`, or downgrading `profile` to
+  `default`, would unblock both this and the brain halt in one line — and both
+  are operator-owned policy. Manufacturing a verify record by hand would also
+  "work" and is the exact thing this run was told never to do. Recording the
+  deadlock instead.
+- **Status:** open — **run-blocking.** T1's code is written, committed on branch
+  `spec/aido-config` (`5432579`), and passes
+  `CGO_ENABLED=0 go build ./... && go vet ./... && go test ./...` locally. It has
+  **no specd evidence record** and T1 is **not complete**, because the only
+  honest way to record evidence is a real `specd verify`, and `specd verify` is
+  refused.
+
+### 2026-07-21 — friction — no task declares `go.sum`
+
+- **Context:** spec `aido-config`, execute phase, task T1, declared files
+  `go.mod, internal/config/paths.go, internal/config/paths_test.go`.
+- **Expected:** the six required `tasks.md` columns plus a declared `files:` list
+  are meant to bound a task exactly. A task that declares `go.mod` and a
+  `require` line implicitly needs `go.sum`; Go refuses to build a module whose
+  requirements it cannot verify.
+- **Actual:** `go.sum` is declared by no task in the spec, and the tasks
+  artifact is approved and frozen — widening `files:` now needs `specd midreq`,
+  which is human-only. The agent's choices were: touch an undeclared file, or
+  block the whole spec on a file that no reasonable planner would have listed
+  separately.
+- **Root cause:** ambiguous docs. Nothing states whether a lockfile/checksum
+  companion is covered by declaring its manifest. This will recur for every
+  ecosystem specd is used in — `package-lock.json`, `Cargo.lock`,
+  `poetry.lock`, `go.sum`.
+- **Recommendation:** treat a declared manifest as covering its lockfile
+  companion, and say so in the tasks scaffold — `declaring go.mod covers
+  go.sum; declaring package.json covers package-lock.json`. Alternatively have
+  the scope gate emit the pairing as a warning rather than a violation, naming
+  the companion it auto-admitted.
+- **What was done:** `specd request-decision aido-config --text "…"` recorded the
+  deviation before the file was touched (`recorded decision-request for
+  aido-config`), then `go.sum` was generated in the same commit as `go.mod`. A
+  human ruling is still outstanding.
+- **Status:** open
