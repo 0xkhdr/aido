@@ -1,42 +1,42 @@
 {
   "session_id": "aido-config",
-  "step": 4,
+  "step": 5,
   "wave": 0,
   "decision": "dispatch",
-  "mission_id": "aido-config.s4.T3",
-  "task_id": "T3",
+  "mission_id": "aido-config.s5.T4",
+  "task_id": "T4",
   "mission": {
     "protocol_version": "1",
     "session_id": "aido-config",
-    "mission_id": "aido-config.s4.T3",
+    "mission_id": "aido-config.s5.T4",
     "spec_slug": "aido-config",
-    "task_id": "T3",
+    "task_id": "T4",
     "attempt": 1,
     "role": "craftsman",
     "authority_ref": "approval:tasks",
     "declared_files": [
-      "internal/config/validate.go",
-      "internal/config/validate_test.go"
+      "internal/config/write.go",
+      "internal/config/write_test.go"
     ],
     "acceptance": [
-      "R3.1, R3.2, R3.3, R3.4, R3.5"
+      "R5.1, R5.2, R5.3, R5.4"
     ],
     "verify": "CGO_ENABLED=0 go build ./... \u0026\u0026 go vet ./... \u0026\u0026 go test ./...",
-    "context_ref": "context:aido-config:T3",
-    "context_digest": "519da70cbeb13a224b6e27ce79ffe1bb27b36431368e095d20d3277f1e0ced94",
+    "context_ref": "context:aido-config:T4",
+    "context_digest": "462934512ea7ad407a87a5346be2eb2b4082c61260da5aa136a65733dded15ae",
     "config_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
     "palette_digest": "bae489ae737d2843e04cf152892272cd769cc9ef661f71eb67fb2227b6e3fed6",
     "policy_digest": "43ffc19d74c3729e750cb00c3ed25071de259e288e55160fdd349574ecd92494",
-    "subject_head": "ccf5db8039bc9559ae18bb05e7a5817b50975c2f",
+    "subject_head": "3eed0fcbd52b819ec675b9eeb93f3ffdb84a3476",
     "route_class": "deep",
     "route_reason": "policy=1 risk=high complexity=standard capabilities=context,eval,read,review,sandbox,write",
     "limits": {
       "max_attempts": 4,
       "timeout_seconds": 900
     },
-    "issued_at": "2026-07-21T20:13:28.736989932+03:00",
-    "expires_at": "2026-07-21T20:28:28.736989932+03:00",
+    "issued_at": "2026-07-21T20:27:02.729874762+03:00",
+    "expires_at": "2026-07-21T20:42:02.729874762+03:00",
     "status": "pending"
   },
-  "time": "2026-07-21T20:13:28.736989932+03:00"
+  "time": "2026-07-21T20:27:02.729874762+03:00"
 }

@@ -920,3 +920,51 @@ stated plainly and stays a proposal — never a self-applied change.
   cannot silently adopt a mission the ledger rejected. If the adoption is
   intended, make it explicit and print the re-pin.
 - **Status:** open
+
+### 2026-07-21 — friction — an abandoned mission outranks the claimed one when resolving a task's scope baseline
+
+- **Context:** spec `aido-config`, execute phase, task T4. T4 had two missions:
+  `aido-config.s3.T4` (dispatched in the doomed parallel wave, never claimed,
+  expired, `subject_head 66de2e3`) and `aido-config.s5.T4` (freshly dispatched
+  after the first expired, **claimed** as lease
+  `56f404784e1fa970043f9e502f87b76d`, `subject_head 3eed0fc` = HEAD).
+- **Expected:** the claimed, live mission pins the baseline.
+- **Actual:** the expired, abandoned one does:
+  ```
+  $ specd complete-task aido-config T4 --session ds-4919… --nonce …
+  OUTSIDE_SCOPE: task T4 changed files outside its declared scope:
+    SPECD-FEEDBACK.md is not declared by task T4 (modified)
+    T4 modifies harness-owned state .specd/specs/aido-config/tasks.md
+    internal/config/config.go is not declared by task T4 (created)
+    internal/config/config_test.go is not declared by task T4 (created)
+    internal/config/validate.go is not declared by task T4 (created)
+    internal/config/validate_test.go is not declared by task T4 (created)
+  ```
+  Every flagged file is T2's or T3's, already completed and committed — i.e. the
+  diff is being measured from `66de2e3`, the dead mission's head.
+- **Root cause:** harness bug, one line. `missionBaseline`
+  (`internal/cmd/lifecycle.go`) iterates
+  `append(session.Missions, session.PendingMissions...)` and keeps the **last**
+  match without breaking. `brain claim` moves a mission `PendingMissions ->
+  Missions` (`brain_claim.go:57`). So claiming a mission demotes it in the
+  iteration order, and any never-claimed leftover in `PendingMissions` wins.
+  Claiming a mission is therefore the act that makes it lose.
+- **Aggravating factor:** `ReconcileSession` (`orchestration/recover.go`) never
+  prunes. An abandoned pending mission is permanent for the life of the session,
+  so this misresolution is not transient — it recurs for that task forever.
+- **Recommendation:** (a) resolve the baseline from the mission that is
+  *actually governing* — prefer a live claimed lease's mission, then the newest
+  pending one by `issued_at`, and never an expired mission when a live one
+  exists; (b) drop or mark expired pending missions in `ReconcileSession`;
+  (c) print the resolved baseline and its mission id in the `OUTSIDE_SCOPE`
+  message — the whole diagnosis above took reading three source files, and one
+  line of output would have replaced it.
+- **Workaround forced on this run:** do **not** claim missions. An unclaimed
+  mission stays in `PendingMissions` and, being appended last, wins the
+  baseline. So the orchestration protocol works only if the worker skips the
+  step that grants it authority — with `brain report` already unusable
+  (see above), claim/report is now entirely bypassed and this run is
+  orchestrated in name only.
+- **Status:** open — **the most serious finding of the run so far.** The two
+  bugs compose into: the documented orchestration path (dispatch → claim →
+  work → report) cannot complete a single task.
