@@ -396,3 +396,42 @@ _Entries appended below as the run proceeds._
      five exports that appear nowhere in it. This is the artifact later specs are
      told to consume. It needs a design amendment of the same kind you authorised
      for the Go floor — that is your edit, not mine.
+
+### aido-config · verifying → complete — **APPROVED**
+
+- **Command:** `specd check aido-config` → exit 0, no output.
+  `specd status --guide` → **no blockers** (the first time in this run).
+  `specd approve aido-config` → `approved aido-config: verifying → complete`.
+- **What I approved on, since a clean `check` has meant nothing all run:** the
+  independent auditor's `approve` verdict, reached at the eighth pass and held
+  across three of them. 8/8 tasks complete, 25/25 acceptance criteria passing,
+  `go build` / `go vet` / `go test` green, review evidence imported with
+  `verdict: pass` and `subject_revision` at the reviewed commit.
+- **The auditor's own caveat, which belongs here and not buried in its report:**
+  *"This spec was written, self-approved, and had its criterion evidence recorded
+  by one agent, and six of eight tasks' files were later edited outside any
+  completion transaction — the approval rests on what I verified by executing the
+  code, not on the standing evidence chain."* That is the honest basis for this
+  approval. The evidence chain is real and unfabricated, but it is not
+  independent; the audit is.
+- **How close this came to shipping broken.** Three defects reached HEAD and
+  were caught by reading and running code, never by a gate: a `tech.md` T3
+  steering violation (a `git` subprocess), a silent regression (go-git dropping
+  `.git/info/exclude`), and a leak in my own fix for that regression that wrote
+  an API key to a path git tracks in five ordinary configurations. Two of the
+  three were in code I had already certified `pass` myself.
+- **Root cause of all three, and the thing worth carrying forward:** R4.6 was
+  specified nowhere. `design.md` cited it in `references:` and in one invariant,
+  so every automated check saw the requirement as covered, while Interfaces,
+  Failure, and Verification said nothing about it. Four implementations were
+  therefore four fresh inventions with nothing to check against. **A design gate
+  that checks presence of a *reference* rather than presence of a
+  *specification* reports green on exactly this failure.** `design.md` now
+  specifies R4.6 across all three sections.
+- **Would have asked you:** nothing blocking, but two items the auditor names as
+  worth doing next, both small: **F9** — `design.md` claims `go build ./...`
+  verifies invariant I6, which is false (a compile would pass with the validator
+  inlined into `cmd/aido`); delete the claim or make it true. **F14** —
+  `Validate` should reject a malformed `api_key_source` as well as `ResolveKey`,
+  because `aido config show` calls only `Validate`, so a typo is invisible at the
+  one command a user runs to check their config.

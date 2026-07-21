@@ -7,7 +7,7 @@ anti-pattern (see docs/validation-gates.md). Edit the three fields below, then
 run `specd approve <spec> complete` with review.required enabled.
 -->
 
-- **Git HEAD:** b3b3c78940c80d1e5ae8695f6c98af4562a62038
+- **Git HEAD:** 312630e89533b2facd914656ed10b77daef39b71
 - **Reviewer:** pinky-auditor (subagent, unattended run 2026-07-21)
 - **Verdict:** approve
 
@@ -1680,3 +1680,27 @@ documentation claims are accurate, and the finding it closes was one I had alrea
 declined to hold the verdict for. The residue list from the sixth pass stands as
 recorded: F9 and F14 are the two worth doing next, F10-residue, F11, N6, and NN7
 are minor, and F12 remains the permanent process note.
+
+### Eighth pass at 312630e
+
+Verified `git diff b3b3c78..312630e` myself rather than accepting the
+description: eleven files, all of them `design.md`, `SPECD-FEEDBACK.md`, this
+report, and `.specd/` bookkeeping (`state.json`, `tasks.md`, `session.json`,
+`checkpoint.json`, and the four ledgers). `git diff --name-only | grep -E
+'^(internal|cmd)/'` returns nothing, so no code, test, or `go.mod` moved;
+`go vet ./...` and `CGO_ENABLED=0 go test ./...` still pass, and
+`go list -f '{{.Imports}}' ./internal/config` still returns exactly
+`go-billy/v5/osfs`, `go-git/v5/plumbing/format/{gitignore,index}`, and
+`gopkg.in/yaml.v3`. Both F13 nits are addressed in `design.md`: the
+`integration:` header now names `go-billy` as "go-git's filesystem interface,
+reached only through it" and drops the "all on the T1 allowlist" phrasing that
+would have over-claimed for a module T1 does not list by name — more accurate
+than the fix I asked for — and the Integration bullet carries the same
+justification with the amendment parenthetical moved to its own paragraph. Only
+the trailing `CGO_ENABLED=0` sentence still sits after the parenthetical rather
+than before it, which is the cosmetic half of a nit I said was not worth a commit;
+it is not worth one now either. **`Git HEAD:` set to `312630e`, verdict remains
+`approve`.** For the record, the committed form of this document will name the
+commit before itself, because the gate compares a prose field against git HEAD at
+approval time and the commit recording the stamp necessarily comes after it —
+circular by construction, logged upstream, and not a defect in this review.

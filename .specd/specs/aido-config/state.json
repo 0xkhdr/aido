@@ -2,10 +2,19 @@
   "schema_version": 1,
   "slug": "aido-config",
   "mode": "orchestrated",
-  "status": "verifying",
-  "phase": "verify",
-  "revision": 14,
+  "status": "complete",
+  "phase": "reflect",
+  "revision": 15,
   "records": {
+    "approval:complete": {
+      "kind": "approval",
+      "text": "verifying → complete",
+      "gate": "complete",
+      "approved_revision": 14,
+      "timestamp": "2026-07-21T20:14:24Z",
+      "git_head": "312630e89533b2facd914656ed10b77daef39b71",
+      "actor": "xkhdr"
+    },
     "approval:design": {
       "kind": "approval",
       "text": "design → tasks",
